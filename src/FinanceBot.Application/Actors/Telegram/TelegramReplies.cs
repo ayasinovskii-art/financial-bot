@@ -130,6 +130,16 @@ public static class TelegramReplies
         return $"Записал {Format(a.Amount)} ₽ → `{a.Category}` ({a.Bucket}).\n{bucketLine}";
     }
 
+    public static string TemplateUsage()
+        => "Команды: `/template add <name> <amount> <schedule> [<category>]`, `/template list`, `/template remove <name>`.\n" +
+           "Schedule: `weekdays` / `daily` / `dow:1,3,5` / `dom:1,15`.";
+
+    public static string PlanUsage()
+        => "Команды: `/plan add <amount> <YYYY-MM-DD> <description>`, `/plan list`, `/plan remove <id>`.";
+
+    public static string SavingsUsage()
+        => "Формат: `/savings <amount>`. Подтверждает фактический перевод на накопления.";
+
     private static string Format(decimal value) => value.ToString("0.00", CultureInfo.InvariantCulture);
 
     public static string WhitelistList(WhitelistEntry[] entries, long[] admins)

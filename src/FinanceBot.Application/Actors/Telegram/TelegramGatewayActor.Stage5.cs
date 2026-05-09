@@ -34,6 +34,9 @@ public sealed partial class TelegramGatewayActor
         WireStage8();
         WireStage9();
         WireStage11();
+        WireStage13();
+        WireStage14();
+        WireStage15();
     }
 
     partial void WireStage6();
@@ -41,6 +44,9 @@ public sealed partial class TelegramGatewayActor
     partial void WireStage8();
     partial void WireStage9();
     partial void WireStage11();
+    partial void WireStage13();
+    partial void WireStage14();
+    partial void WireStage15();
 
     partial void HandleAddUser(IncomingTelegramUpdate update, string args, AccessDecision.Allowed allowed);
     partial void HandleRemoveUser(IncomingTelegramUpdate update, string args, AccessDecision.Allowed allowed);
@@ -52,6 +58,9 @@ public sealed partial class TelegramGatewayActor
     partial void HandleCorrect(IncomingTelegramUpdate update, AccessDecision.Allowed allowed);
     partial void HandleFreeText(IncomingTelegramUpdate update, AccessDecision.Allowed allowed);
     partial void HandleCorrectionCallback(IncomingCallbackQuery callback);
+    partial void HandleTemplate(IncomingTelegramUpdate update, string args, AccessDecision.Allowed allowed);
+    partial void HandlePlan(IncomingTelegramUpdate update, string args, AccessDecision.Allowed allowed);
+    partial void HandleSavings(IncomingTelegramUpdate update, string args, AccessDecision.Allowed allowed);
 
     private void HandleIncomingUpdate(IncomingTelegramUpdate update)
     {
@@ -142,6 +151,16 @@ public sealed partial class TelegramGatewayActor
                 break;
             case TelegramCommandKind.Correct:
                 HandleCorrect(update, allowed);
+                break;
+
+            case TelegramCommandKind.Template:
+                HandleTemplate(update, parsed.ArgumentLine, allowed);
+                break;
+            case TelegramCommandKind.Plan:
+                HandlePlan(update, parsed.ArgumentLine, allowed);
+                break;
+            case TelegramCommandKind.Savings:
+                HandleSavings(update, parsed.ArgumentLine, allowed);
                 break;
 
             default:

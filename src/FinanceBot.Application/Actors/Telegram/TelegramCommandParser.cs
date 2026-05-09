@@ -27,6 +27,15 @@ public enum TelegramCommandKind
     ExpenseDay = 41,
     Correct = 42,
 
+    // Stage 13 — recurring templates
+    Template = 50,
+
+    // Stage 14 — planned expenses
+    Plan = 60,
+
+    // Stage 15 — savings
+    Savings = 70,
+
     Unknown = 99
 }
 
@@ -76,6 +85,9 @@ public static class TelegramCommandParser
             "expense" => TelegramCommandKind.Expense,
             "expense_day" => TelegramCommandKind.ExpenseDay,
             "correct" => TelegramCommandKind.Correct,
+            "template" => TelegramCommandKind.Template,
+            "plan" => TelegramCommandKind.Plan,
+            "savings" => TelegramCommandKind.Savings,
             _ => TelegramCommandKind.Unknown
         };
 
