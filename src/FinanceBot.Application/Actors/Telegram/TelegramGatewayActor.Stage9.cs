@@ -49,13 +49,6 @@ public sealed partial class TelegramGatewayActor
         DispatchExpense(update, parsed.Date, parsed.Amount, parsed.Description ?? "(итог дня)");
     }
 
-    partial void HandleCorrect(IncomingTelegramUpdate update, AccessDecision.Allowed allowed)
-    {
-        _ = allowed;
-        // Реализация — Stage 11.
-        Self.Tell(new OutgoingTelegramReply(update.ChatId, "Команда /correct появится на следующем этапе."));
-    }
-
     partial void HandleFreeText(IncomingTelegramUpdate update, AccessDecision.Allowed allowed)
     {
         _ = allowed;

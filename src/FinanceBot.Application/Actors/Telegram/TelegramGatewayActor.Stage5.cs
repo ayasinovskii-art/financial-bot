@@ -21,7 +21,10 @@ public sealed partial class TelegramGatewayActor
     partial void WireStage5()
     {
         Receive<IncomingTelegramUpdate>(HandleIncomingUpdate);
+        Receive<IncomingCallbackQuery>(HandleIncomingCallback);
         Receive<OutgoingTelegramReply>(HandleOutgoingReply);
+        Receive<OutgoingInlineKeyboard>(HandleOutgoingKeyboard);
+        Receive<OutgoingCallbackAck>(HandleOutgoingCallbackAck);
 
         Receive<AccessCheckResult>(OnAccessCheckResult);
         Receive<RegisterReplyResult>(OnRegisterReplyResult);
@@ -30,12 +33,14 @@ public sealed partial class TelegramGatewayActor
         WireStage7();
         WireStage8();
         WireStage9();
+        WireStage11();
     }
 
     partial void WireStage6();
     partial void WireStage7();
     partial void WireStage8();
     partial void WireStage9();
+    partial void WireStage11();
 
     partial void HandleAddUser(IncomingTelegramUpdate update, string args, AccessDecision.Allowed allowed);
     partial void HandleRemoveUser(IncomingTelegramUpdate update, string args, AccessDecision.Allowed allowed);
@@ -46,6 +51,7 @@ public sealed partial class TelegramGatewayActor
     partial void HandleExpenseDay(IncomingTelegramUpdate update, string args, AccessDecision.Allowed allowed);
     partial void HandleCorrect(IncomingTelegramUpdate update, AccessDecision.Allowed allowed);
     partial void HandleFreeText(IncomingTelegramUpdate update, AccessDecision.Allowed allowed);
+    partial void HandleCorrectionCallback(IncomingCallbackQuery callback);
 
     private void HandleIncomingUpdate(IncomingTelegramUpdate update)
     {
@@ -212,6 +218,22 @@ public sealed partial class TelegramGatewayActor
     private void HandleOutgoingReply(OutgoingTelegramReply reply)
     {
         Context.System.EventStream.Publish(reply);
+    }
+
+    private void HandleOutgoingKeyboard(OutgoingInlineKeyboard kb)
+    {
+        Context.System.EventStream.Publish(kb);
+    }
+
+    private void HandleOutgoingCallbackAck(OutgoingCallbackAck ack)
+    {
+        Context.System.EventStream.Publish(ack);
+    }
+
+    private void HandleIncomingCallback(IncomingCallbackQuery cb)
+    {
+        // Stage 11 routing — пока единственный prefix "correct:".
+        HandleCorrectionCallback(cb);
     }
 
     private sealed record AccessCheckResult(

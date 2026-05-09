@@ -20,6 +20,7 @@ public sealed record ExpenseCategorizedAutomatically(
     Category Category,
     ExpenseSource Source,
     bool NeedsReview,
+    NormalizedDescription NormalizedDescription,
     DateTimeOffset OccurredAt,
     int EventVersion = 1) : IUserScopedEvent;
 

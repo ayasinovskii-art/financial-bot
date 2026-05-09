@@ -47,6 +47,7 @@ public sealed class UserActor : ReceivePersistentActor
         Recover<BudgetAllocated>(ApplyEvent);
         Recover<ExpenseReported>(ApplyEvent);
         Recover<ExpenseCategorizedAutomatically>(ApplyEvent);
+        Recover<ExpenseCategoryCorrected>(ApplyEvent);
         Recover<SnapshotOffer>(offer =>
         {
             if (offer.Snapshot is UserState snap)
@@ -63,6 +64,8 @@ public sealed class UserActor : ReceivePersistentActor
         Command<ReportIncome>(HandleReportIncome);
         Command<ReportExpense>(HandleReportExpense);
         Command<CategorizeResponse>(HandleCategorizeResponse);
+        Command<CorrectExpenseCategory>(HandleCorrectExpenseCategory);
+        Command<GetNeedsReviewExpenses>(HandleGetNeedsReview);
 
         Command<Cancel>(_ => Sender.Tell(new CancelAcknowledged(_userId)));
 
@@ -268,15 +271,24 @@ public sealed class UserActor : ReceivePersistentActor
             ApplyEvent(persisted);
             MaybeSnapshot();
 
+            var normalized = NormalizedDescription.FromRaw(persisted.Description);
+
+            // Stage 11: сначала memory.
+            if (!normalized.IsEmpty
+                && _state.CategoryMemory.TryGetValue(normalized.Value, out var memCategory))
+            {
+                CompleteExpenseWithCategory(expenseId, normalized, memCategory, ExpenseSource.Memory, needsReview: false);
+                return;
+            }
+
             var registry = ActorRegistry.For(Context.System);
             if (!registry.TryGet<CategorizerActorMarker>(out var categorizer))
             {
                 _log.Warning("CategorizerActor not registered; falling back to Other.");
-                CompleteExpenseWithCategory(expenseId, Category.Other, ExpenseSource.Fallback, needsReview: true);
+                CompleteExpenseWithCategory(expenseId, normalized, Category.Other, ExpenseSource.Fallback, needsReview: true);
                 return;
             }
 
-            var normalized = NormalizedDescription.FromRaw(persisted.Description);
             categorizer.Tell(new CategorizeRequest(Guid.NewGuid(), _userId, expenseId, normalized));
         });
     }
@@ -287,10 +299,20 @@ public sealed class UserActor : ReceivePersistentActor
         {
             return;
         }
-        CompleteExpenseWithCategory(resp.ExpenseId, resp.Category, resp.Source, resp.NeedsReview);
+        // Описание берём из state.PendingDescriptions, заполненного при ExpenseReported.
+        var normalized = _state.ActivePeriod is { } period
+                         && period.PendingDescriptions.TryGetValue(resp.ExpenseId, out var n)
+            ? n
+            : default;
+        CompleteExpenseWithCategory(resp.ExpenseId, normalized, resp.Category, resp.Source, resp.NeedsReview);
     }
 
-    private void CompleteExpenseWithCategory(Guid expenseId, Category category, ExpenseSource source, bool needsReview)
+    private void CompleteExpenseWithCategory(
+        Guid expenseId,
+        NormalizedDescription normalized,
+        Category category,
+        ExpenseSource source,
+        bool needsReview)
     {
         var evt = new ExpenseCategorizedAutomatically(
             UserId: _userId,
@@ -298,6 +320,7 @@ public sealed class UserActor : ReceivePersistentActor
             Category: category,
             Source: source,
             NeedsReview: needsReview,
+            NormalizedDescription: normalized,
             OccurredAt: DateTimeOffset.UtcNow);
 
         Persist(evt, persisted =>
@@ -319,6 +342,55 @@ public sealed class UserActor : ReceivePersistentActor
         });
     }
 
+    private void HandleCorrectExpenseCategory(CorrectExpenseCategory cmd)
+    {
+        if (!_state.IsRegistered || _state.ActivePeriod is null)
+        {
+            Sender.Tell(new ExpenseCorrectionRejected(_userId, "Активного периода нет."));
+            return;
+        }
+
+        var review = _state.ActivePeriod.NeedsReviewExpenses
+            .FirstOrDefault(r => r.ExpenseId == cmd.ExpenseId);
+        if (review is null)
+        {
+            Sender.Tell(new ExpenseCorrectionRejected(_userId,
+                "Эта трата уже не требует ручной категоризации (или принадлежит другому периоду)."));
+            return;
+        }
+
+        var evt = new ExpenseCategoryCorrected(
+            UserId: _userId,
+            ExpenseId: cmd.ExpenseId,
+            OldCategory: review.Category,
+            NewCategory: cmd.NewCategory,
+            NormalizedDescription: review.NormalizedDescription,
+            OccurredAt: DateTimeOffset.UtcNow);
+
+        var sender = Sender;
+        Persist(evt, persisted =>
+        {
+            ApplyEvent(persisted);
+            MaybeSnapshot();
+            sender.Tell(new ExpenseCorrectionApplied(_userId, persisted.ExpenseId, persisted.OldCategory, persisted.NewCategory));
+        });
+    }
+
+    private void HandleGetNeedsReview(GetNeedsReviewExpenses cmd)
+    {
+        if (_state.ActivePeriod is null)
+        {
+            Sender.Tell(new NeedsReviewList(_userId, []));
+            return;
+        }
+
+        var top = _state.ActivePeriod.NeedsReviewExpenses
+            .OrderByDescending(e => e.OccurredAt)
+            .Take(cmd.Limit)
+            .ToArray();
+        Sender.Tell(new NeedsReviewList(_userId, top));
+    }
+
     private void HandleGetSnapshot(GetUserSnapshot _)
         => Sender.Tell(new UserSnapshot(
             _userId, _state.IsRegistered, _state.TelegramId, _state.Timezone, _state.Settings));
@@ -334,6 +406,7 @@ public sealed class UserActor : ReceivePersistentActor
             BudgetAllocated a => _state.WithAllocation(a),
             ExpenseReported e => _state.WithReportedExpense(e),
             ExpenseCategorizedAutomatically c => _state.WithCategorizedExpense(c, BucketMap.Map(c.Category)),
+            ExpenseCategoryCorrected cc => _state.WithCorrectedExpense(cc, BucketMap.Map(cc.OldCategory), BucketMap.Map(cc.NewCategory)),
             _ => _state
         };
     }
@@ -391,7 +464,18 @@ public sealed record ActivePeriod(
     decimal SpentEssentials,
     decimal SpentFun,
     decimal SpentDeposit,
-    IReadOnlyDictionary<Guid, decimal> PendingAmounts);
+    IReadOnlyDictionary<Guid, decimal> PendingAmounts,
+    IReadOnlyDictionary<Guid, NormalizedDescription> PendingDescriptions,
+    IReadOnlyList<NeedsReviewExpense> NeedsReviewExpenses);
+
+/// <summary>Запись о трате, требующей ручной категоризации (Stage 11).</summary>
+public sealed record NeedsReviewExpense(
+    Guid ExpenseId,
+    decimal Amount,
+    string Description,
+    NormalizedDescription NormalizedDescription,
+    Category Category,
+    DateTimeOffset OccurredAt);
 
 /// <summary>Состояние UserActor (in-memory). Восстанавливается из событий.</summary>
 public sealed record UserState(
@@ -400,10 +484,14 @@ public sealed record UserState(
     string? Timezone,
     DateTimeOffset? RegisteredAt,
     Dictionary<string, string?> Settings,
-    ActivePeriod? ActivePeriod)
+    ActivePeriod? ActivePeriod,
+    IReadOnlyDictionary<string, Category> CategoryMemory)
 {
-    public static UserState Empty { get; } = new(false, null, null, null,
-        new Dictionary<string, string?>(StringComparer.Ordinal), null);
+    public static UserState Empty { get; } = new(
+        false, null, null, null,
+        new Dictionary<string, string?>(StringComparer.Ordinal),
+        null,
+        new Dictionary<string, Category>(StringComparer.Ordinal));
 
     public UserState WithRegistration(UserRegistered r)
         => this with { IsRegistered = true, TelegramId = r.TelegramId, Timezone = r.Timezone, RegisteredAt = r.OccurredAt };
@@ -428,19 +516,28 @@ public sealed record UserState(
             ActivePeriod = new ActivePeriod(
                 p.PeriodId, p.StartDate, p.PeriodType,
                 0m, 0m, 0m, 0m, 0m, 0m, 0m,
-                new Dictionary<Guid, decimal>())
+                new Dictionary<Guid, decimal>(),
+                new Dictionary<Guid, NormalizedDescription>(),
+                Array.Empty<NeedsReviewExpense>())
         };
 
     public UserState WithReportedExpense(ExpenseReported e)
     {
-        // Категория ещё неизвестна — в spent попадает только после ExpenseCategorizedAutomatically.
-        // Запоминаем сумму в pending словаре (хранится отдельно в ActivePeriod.PendingAmounts).
         if (ActivePeriod is null || ActivePeriod.PeriodId != e.PeriodId)
         {
             return this;
         }
-        var pending = new Dictionary<Guid, decimal>(ActivePeriod.PendingAmounts) { [e.ExpenseId] = e.Amount };
-        return this with { ActivePeriod = ActivePeriod with { PendingAmounts = pending } };
+        var pendingAmounts = new Dictionary<Guid, decimal>(ActivePeriod.PendingAmounts) { [e.ExpenseId] = e.Amount };
+        var pendingDescs = new Dictionary<Guid, NormalizedDescription>(ActivePeriod.PendingDescriptions)
+        {
+            [e.ExpenseId] = NormalizedDescription.FromRaw(e.Description)
+        };
+        var period = ActivePeriod with
+        {
+            PendingAmounts = pendingAmounts,
+            PendingDescriptions = pendingDescs
+        };
+        return this with { ActivePeriod = period };
     }
 
     public UserState WithCategorizedExpense(ExpenseCategorizedAutomatically c, Bucket bucket)
@@ -453,9 +550,13 @@ public sealed record UserState(
         {
             return this;
         }
-        var nextPending = new Dictionary<Guid, decimal>(ActivePeriod.PendingAmounts);
-        nextPending.Remove(c.ExpenseId);
-        var p = ActivePeriod with { PendingAmounts = nextPending };
+
+        var nextAmounts = new Dictionary<Guid, decimal>(ActivePeriod.PendingAmounts);
+        nextAmounts.Remove(c.ExpenseId);
+        var nextDescs = new Dictionary<Guid, NormalizedDescription>(ActivePeriod.PendingDescriptions);
+        nextDescs.Remove(c.ExpenseId);
+
+        var p = ActivePeriod with { PendingAmounts = nextAmounts, PendingDescriptions = nextDescs };
         p = bucket switch
         {
             Bucket.Essentials => p with { SpentEssentials = p.SpentEssentials + amount },
@@ -463,8 +564,87 @@ public sealed record UserState(
             Bucket.Deposit => p with { SpentDeposit = p.SpentDeposit + amount },
             _ => p
         };
-        return this with { ActivePeriod = p };
+
+        if (c.NeedsReview)
+        {
+            var review = new NeedsReviewExpense(
+                c.ExpenseId, amount, c.NormalizedDescription.Value, c.NormalizedDescription, c.Category, c.OccurredAt);
+            var list = p.NeedsReviewExpenses.Concat([review]).ToArray();
+            p = p with { NeedsReviewExpenses = list };
+        }
+
+        var nextMemory = MaybeUpdateMemory(c.NormalizedDescription, c.Source, c.Category);
+        return this with { ActivePeriod = p, CategoryMemory = nextMemory };
     }
+
+    public UserState WithCorrectedExpense(ExpenseCategoryCorrected c, Bucket oldBucket, Bucket newBucket)
+    {
+        var nextMemory = AddMemory(c.NormalizedDescription, c.NewCategory);
+        if (ActivePeriod is null)
+        {
+            return this with { CategoryMemory = nextMemory };
+        }
+
+        var review = ActivePeriod.NeedsReviewExpenses.FirstOrDefault(e => e.ExpenseId == c.ExpenseId);
+        var p = ActivePeriod;
+        if (review is not null)
+        {
+            p = p with { NeedsReviewExpenses = ActivePeriod.NeedsReviewExpenses.Where(e => e.ExpenseId != c.ExpenseId).ToArray() };
+
+            // Перенос spent между бакетами при изменении категории.
+            if (oldBucket != newBucket)
+            {
+                p = SubtractFromBucket(p, oldBucket, review.Amount);
+                p = AddToBucket(p, newBucket, review.Amount);
+            }
+        }
+        return this with { ActivePeriod = p, CategoryMemory = nextMemory };
+    }
+
+    private IReadOnlyDictionary<string, Category> MaybeUpdateMemory(
+        NormalizedDescription normalized, ExpenseSource source, Category category)
+    {
+        // Memory обновляется на ExpenseCategorizedAutomatically с source ∈ {Memory, Claude}.
+        // Source = Rules не меняет memory (правила и так детерминируют категоризацию).
+        if (source is not ExpenseSource.Memory and not ExpenseSource.Claude)
+        {
+            return CategoryMemory;
+        }
+        if (normalized.IsEmpty)
+        {
+            return CategoryMemory;
+        }
+        return AddMemory(normalized, category);
+    }
+
+    private IReadOnlyDictionary<string, Category> AddMemory(NormalizedDescription normalized, Category category)
+    {
+        if (normalized.IsEmpty)
+        {
+            return CategoryMemory;
+        }
+        var next = new Dictionary<string, Category>(CategoryMemory, StringComparer.Ordinal)
+        {
+            [normalized.Value] = category
+        };
+        return next;
+    }
+
+    private static ActivePeriod SubtractFromBucket(ActivePeriod p, Bucket bucket, decimal amount) => bucket switch
+    {
+        Bucket.Essentials => p with { SpentEssentials = p.SpentEssentials - amount },
+        Bucket.Fun => p with { SpentFun = p.SpentFun - amount },
+        Bucket.Deposit => p with { SpentDeposit = p.SpentDeposit - amount },
+        _ => p
+    };
+
+    private static ActivePeriod AddToBucket(ActivePeriod p, Bucket bucket, decimal amount) => bucket switch
+    {
+        Bucket.Essentials => p with { SpentEssentials = p.SpentEssentials + amount },
+        Bucket.Fun => p with { SpentFun = p.SpentFun + amount },
+        Bucket.Deposit => p with { SpentDeposit = p.SpentDeposit + amount },
+        _ => p
+    };
 
     public UserState WithIncome(IncomeReported i)
     {

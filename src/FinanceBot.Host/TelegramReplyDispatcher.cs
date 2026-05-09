@@ -7,7 +7,8 @@ using Microsoft.Extensions.Logging;
 namespace FinanceBot.Host;
 
 /// <summary>
-/// Подписывается на <see cref="OutgoingTelegramReply"/> в Akka EventStream и пробрасывает в <see cref="ITelegramBot"/>.
+/// Подписывается на исходящие Telegram-сообщения в Akka EventStream и пробрасывает в <see cref="ITelegramBot"/>.
+/// Поддерживает текстовые reply, inline-клавиатуры и подтверждение callback'ов.
 /// </summary>
 public sealed class TelegramReplyDispatcher(
     ActorSystem actorSystem,
@@ -23,6 +24,8 @@ public sealed class TelegramReplyDispatcher(
             DispatcherActor.CreateProps(telegramBot, log),
             "telegram-reply-dispatcher");
         actorSystem.EventStream.Subscribe(_subscriber, typeof(OutgoingTelegramReply));
+        actorSystem.EventStream.Subscribe(_subscriber, typeof(OutgoingInlineKeyboard));
+        actorSystem.EventStream.Subscribe(_subscriber, typeof(OutgoingCallbackAck));
         log.LogInformation("Telegram reply dispatcher subscribed to EventStream.");
         return Task.CompletedTask;
     }
@@ -41,13 +44,12 @@ public sealed class TelegramReplyDispatcher(
     {
         public DispatcherActor(ITelegramBot bot, ILogger log)
         {
-            Receive<OutgoingTelegramReply>(reply =>
-            {
-                _ = SendAsync(bot, log, reply);
-            });
+            Receive<OutgoingTelegramReply>(reply => _ = SendTextAsync(bot, log, reply));
+            Receive<OutgoingInlineKeyboard>(kb => _ = SendKeyboardAsync(bot, log, kb));
+            Receive<OutgoingCallbackAck>(ack => _ = AnswerCallbackAsync(bot, log, ack));
         }
 
-        private static async Task SendAsync(ITelegramBot bot, ILogger log, OutgoingTelegramReply reply)
+        private static async Task SendTextAsync(ITelegramBot bot, ILogger log, OutgoingTelegramReply reply)
         {
             try
             {
@@ -56,6 +58,30 @@ public sealed class TelegramReplyDispatcher(
             catch (Exception ex)
             {
                 log.LogError(ex, "Failed to deliver telegram reply to chat={ChatId}.", reply.ChatId);
+            }
+        }
+
+        private static async Task SendKeyboardAsync(ITelegramBot bot, ILogger log, OutgoingInlineKeyboard kb)
+        {
+            try
+            {
+                await bot.SendInlineKeyboardAsync(kb.ChatId, kb.Text, kb.Rows, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "Failed to deliver telegram inline-keyboard to chat={ChatId}.", kb.ChatId);
+            }
+        }
+
+        private static async Task AnswerCallbackAsync(ITelegramBot bot, ILogger log, OutgoingCallbackAck ack)
+        {
+            try
+            {
+                await bot.AnswerCallbackAsync(ack.CallbackQueryId, ack.Text, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "Failed to answer callback {Id}.", ack.CallbackQueryId);
             }
         }
 
