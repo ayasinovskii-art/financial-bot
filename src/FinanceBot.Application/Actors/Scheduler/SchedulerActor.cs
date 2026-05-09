@@ -137,7 +137,12 @@ public sealed class SchedulerActor : ReceiveActor, IWithTimers
         var self = Self;
         try
         {
-            if (!ActorRegistry.For(Context.System).TryGet<UserShardMarker>(out var userShard))
+            var registry = ActorRegistry.For(Context.System);
+
+            // System-wide: ClaudeAutoRecoveryTick на 20:00 server time (см. §3.11, §10.16).
+            DispatchClaudeAutoRecoveryIfDue(registry, from, to);
+
+            if (!registry.TryGet<UserShardMarker>(out var userShard))
             {
                 self.Tell(new TickCheckCompleted(to));
                 return;
@@ -156,6 +161,24 @@ public sealed class SchedulerActor : ReceiveActor, IWithTimers
             self.Tell(new TickCheckCompleted(to));
         }
     }
+
+    private void DispatchClaudeAutoRecoveryIfDue(ActorRegistry registry, DateTimeOffset from, DateTimeOffset to)
+    {
+        if (!ServerTimeWindow.ContainsLocalTimeOfDay(from, to,
+            ClaudeAutoRecoveryHour, minute: 0, TimeZoneInfo.Local))
+        {
+            return;
+        }
+        if (!registry.TryGet<FinanceBot.Application.Actors.Claude.ClaudeConsultantSingletonMarker>(out var claude))
+        {
+            return;
+        }
+        _log.Info("ClaudeAutoRecoveryTick fired (server 20:00) → ResetUnavailable.");
+        claude.Tell(new FinanceBot.Application.Actors.Claude.ResetUnavailable());
+    }
+
+    /// <summary>Час локального времени сервера, когда шлём ClaudeAutoRecoveryTick (default 20).</summary>
+    public const int ClaudeAutoRecoveryHour = 20;
 
     private async Task DispatchDueTicksAsync(
         UserDirectoryEntry user, DateTimeOffset from, DateTimeOffset to, IActorRef userShard, CancellationToken ct)
