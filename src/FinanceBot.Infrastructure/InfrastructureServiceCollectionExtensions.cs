@@ -1,11 +1,13 @@
 using FinanceBot.Application.Actors.Claude;
 using FinanceBot.Application.Projections;
+using FinanceBot.Application.Scheduling;
 using FinanceBot.Application.Telegram;
 using FinanceBot.Domain.Services;
 using FinanceBot.Infrastructure.CategoryRules;
 using FinanceBot.Infrastructure.Claude;
 using FinanceBot.Infrastructure.Persistence;
 using FinanceBot.Infrastructure.Projections;
+using FinanceBot.Infrastructure.Scheduling;
 using FinanceBot.Infrastructure.Telegram;
 using FinanceBot.Infrastructure.Timezone;
 using FinanceBot.Infrastructure.WorkdayCalendar;
@@ -97,6 +99,8 @@ public static class InfrastructureServiceCollectionExtensions
 
         services.AddSingleton<ITimezoneRegistry, TimezoneRegistry>();
         services.AddSingleton<ISystemHeartbeatWriter, SystemHeartbeatWriter>();
+        services.AddSingleton<IUserDirectory, UserDirectoryReader>();
+        services.AddSingleton<IUserScheduleResolver, UserScheduleResolver>();
 
         services.AddSingleton<IProjectionOffsetStore, ProjectionOffsetStore>();
         services.AddSingleton<IUsersReadModelWriter, UsersReadModelWriter>();

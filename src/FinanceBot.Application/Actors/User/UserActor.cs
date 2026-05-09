@@ -20,8 +20,9 @@ namespace FinanceBot.Application.Actors.User;
 /// <summary>
 /// Per-user persistent actor. PersistenceId = "user-{userId:N}".
 /// Хранит регистрационные данные, settings, и текущий бюджетный период (Stage 8+).
+/// FSM-расширение Stage 17 (вечерний опрос) и Stage 18 (wakeup) — в partial-файлах.
 /// </summary>
-public sealed class UserActor : ReceivePersistentActor
+public sealed partial class UserActor : ReceivePersistentActor
 {
     private const int SnapshotEvery = 100;
     private static readonly ICategoryBucketMap BucketMap = new DefaultCategoryBucketMap();
@@ -75,8 +76,14 @@ public sealed class UserActor : ReceivePersistentActor
         Command<SaveSnapshotSuccess>(_ => { });
         Command<SaveSnapshotFailure>(failure => _log.Error(failure.Cause, "User snapshot save failed."));
 
+        WireStage17();
+        WireStage18();
+
         CommandAny(msg => _log.Debug("UserActor[{UserId}] received unhandled {MessageType}", _userId, msg.GetType().Name));
     }
+
+    partial void WireStage17();
+    partial void WireStage18();
 
     private void HandleRegister(RegisterUser cmd)
     {

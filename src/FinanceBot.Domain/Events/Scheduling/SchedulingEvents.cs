@@ -30,3 +30,10 @@ public sealed record MonthlyAdvisorTickFired(
     Guid UserId,
     DateTimeOffset OccurredAt,
     int EventVersion = 1) : IUserScopedEvent;
+
+/// <summary>Бот задал пользователю вечерний вопрос (для аналитики и backfill).</summary>
+public sealed record EveningQuestionAsked(
+    Guid UserId,
+    DateOnly Date,
+    DateTimeOffset OccurredAt,
+    int EventVersion = 1) : IUserScopedEvent;

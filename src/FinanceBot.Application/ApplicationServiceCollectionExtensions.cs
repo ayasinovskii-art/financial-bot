@@ -11,6 +11,7 @@ using FinanceBot.Application.Actors.UserPlannedExpenses;
 using FinanceBot.Application.Actors.UserTemplates;
 using FinanceBot.Application.Configuration;
 using FinanceBot.Application.Projections;
+using FinanceBot.Application.Scheduling;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -114,7 +115,9 @@ public static class ApplicationServiceCollectionExtensions
             singletonName: "scheduler",
             propsFactory: (_, _, resolver) =>
                 SchedulerActor.CreateProps(
-                    resolver.GetService<FinanceBot.Application.Projections.ISystemHeartbeatWriter>()),
+                    resolver.GetService<FinanceBot.Application.Projections.ISystemHeartbeatWriter>(),
+                    resolver.GetService<IUserDirectory>(),
+                    resolver.GetService<IUserScheduleResolver>()),
             options: new ClusterSingletonOptions { Role = null });
 
         builder.WithSingleton<FinanceBot.Application.Actors.Claude.ClaudeConsultantSingletonMarker>(
