@@ -48,6 +48,8 @@ public sealed class UserActor : ReceivePersistentActor
         Recover<ExpenseReported>(ApplyEvent);
         Recover<ExpenseCategorizedAutomatically>(ApplyEvent);
         Recover<ExpenseCategoryCorrected>(ApplyEvent);
+        Recover<SavingsReported>(ApplyEvent);
+        Recover<BudgetPeriodClosed>(ApplyEvent);
         Recover<SnapshotOffer>(offer =>
         {
             if (offer.Snapshot is UserState snap)
@@ -66,6 +68,7 @@ public sealed class UserActor : ReceivePersistentActor
         Command<CategorizeResponse>(HandleCategorizeResponse);
         Command<CorrectExpenseCategory>(HandleCorrectExpenseCategory);
         Command<GetNeedsReviewExpenses>(HandleGetNeedsReview);
+        Command<ConfirmSavings>(HandleConfirmSavings);
 
         Command<Cancel>(_ => Sender.Tell(new CancelAcknowledged(_userId)));
 
@@ -191,13 +194,22 @@ public sealed class UserActor : ReceivePersistentActor
         var startDate = DateOnly.FromDateTime(occurredAt.LocalDateTime);
         var ratios = ParseAllocationOrDefault(_state.Settings.GetValueOrDefault(SettingsKey.Allocation.ToWireName()));
 
-        var events = new List<IDomainEvent>(3);
+        var events = new List<IDomainEvent>(4);
         Guid periodId;
         DateOnly periodStart;
         decimal newTotal;
 
-        if (_state.ActivePeriod is null)
+        var openNewPeriod = _state.ActivePeriod is null || _state.PeriodClosable;
+
+        if (openNewPeriod)
         {
+            // Если активный период существует и помечен closable (после /savings) — сначала закрываем его.
+            if (_state.ActivePeriod is { } prev)
+            {
+                events.Add(new BudgetPeriodClosed(
+                    _userId, prev.PeriodId, startDate.AddDays(-1),
+                    SummaryJson: BuildClosedSummaryJson(prev), OccurredAt: occurredAt));
+            }
             periodId = Guid.NewGuid();
             periodStart = startDate;
             events.Add(new BudgetPeriodStarted(_userId, periodId, periodStart, PeriodType.SalaryCycle, occurredAt));
@@ -205,7 +217,7 @@ public sealed class UserActor : ReceivePersistentActor
         }
         else
         {
-            periodId = _state.ActivePeriod.PeriodId;
+            periodId = _state.ActivePeriod!.PeriodId;
             periodStart = _state.ActivePeriod.StartDate;
             newTotal = _state.ActivePeriod.TotalIncome + cmd.Amount;
         }
@@ -395,6 +407,43 @@ public sealed class UserActor : ReceivePersistentActor
         => Sender.Tell(new UserSnapshot(
             _userId, _state.IsRegistered, _state.TelegramId, _state.Timezone, _state.Settings));
 
+    private void HandleConfirmSavings(ConfirmSavings cmd)
+    {
+        if (!_state.IsRegistered)
+        {
+            Sender.Tell(new SavingsRejected(_userId, "Сначала зарегистрируйся через /start."));
+            return;
+        }
+        if (cmd.Amount < 0m)
+        {
+            Sender.Tell(new SavingsRejected(_userId, "Сумма не может быть отрицательной."));
+            return;
+        }
+        var period = _state.ActivePeriod;
+        if (period is null)
+        {
+            Sender.Tell(new SavingsRejected(_userId, "Активного периода нет."));
+            return;
+        }
+
+        // Guid.Empty используется UI как «текущий период».
+        var resolvedPeriodId = cmd.PeriodId == Guid.Empty ? period.PeriodId : cmd.PeriodId;
+        if (resolvedPeriodId != period.PeriodId)
+        {
+            Sender.Tell(new SavingsRejected(_userId, "Период не совпадает с активным."));
+            return;
+        }
+
+        var evt = new SavingsReported(_userId, resolvedPeriodId, cmd.Amount, DateTimeOffset.UtcNow);
+        var sender = Sender;
+        Persist(evt, persisted =>
+        {
+            ApplyEvent(persisted);
+            MaybeSnapshot();
+            sender.Tell(new SavingsAccepted(_userId, persisted.PeriodId, persisted.Amount));
+        });
+    }
+
     private void ApplyEvent(IDomainEvent evt)
     {
         _state = evt switch
@@ -407,8 +456,25 @@ public sealed class UserActor : ReceivePersistentActor
             ExpenseReported e => _state.WithReportedExpense(e),
             ExpenseCategorizedAutomatically c => _state.WithCategorizedExpense(c, BucketMap.Map(c.Category)),
             ExpenseCategoryCorrected cc => _state.WithCorrectedExpense(cc, BucketMap.Map(cc.OldCategory), BucketMap.Map(cc.NewCategory)),
+            SavingsReported sr => _state with { PeriodClosable = _state.ActivePeriod?.PeriodId == sr.PeriodId },
+            BudgetPeriodClosed _ => _state with { ActivePeriod = null, PeriodClosable = false },
             _ => _state
         };
+    }
+
+    private static string BuildClosedSummaryJson(ActivePeriod p)
+    {
+        // Лёгкая сериализация по необходимым полям. На Stage 21 расширим через /report.
+        var doc = new
+        {
+            periodId = p.PeriodId,
+            startDate = p.StartDate.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+            totalIncome = p.TotalIncome,
+            spentEssentials = p.SpentEssentials,
+            spentFun = p.SpentFun,
+            spentDeposit = p.SpentDeposit
+        };
+        return System.Text.Json.JsonSerializer.Serialize(doc);
     }
 
     private static AllocationRatios ParseAllocationOrDefault(string? raw)
@@ -485,13 +551,15 @@ public sealed record UserState(
     DateTimeOffset? RegisteredAt,
     Dictionary<string, string?> Settings,
     ActivePeriod? ActivePeriod,
-    IReadOnlyDictionary<string, Category> CategoryMemory)
+    IReadOnlyDictionary<string, Category> CategoryMemory,
+    bool PeriodClosable)
 {
     public static UserState Empty { get; } = new(
         false, null, null, null,
         new Dictionary<string, string?>(StringComparer.Ordinal),
         null,
-        new Dictionary<string, Category>(StringComparer.Ordinal));
+        new Dictionary<string, Category>(StringComparer.Ordinal),
+        PeriodClosable: false);
 
     public UserState WithRegistration(UserRegistered r)
         => this with { IsRegistered = true, TelegramId = r.TelegramId, Timezone = r.Timezone, RegisteredAt = r.OccurredAt };
