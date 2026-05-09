@@ -112,7 +112,17 @@ public static class ApplicationServiceCollectionExtensions
 
         builder.WithSingleton<SchedulerSingletonMarker>(
             singletonName: "scheduler",
-            propsFactory: (_, _, _) => SchedulerActor.CreateProps(),
+            propsFactory: (_, _, resolver) =>
+                SchedulerActor.CreateProps(
+                    resolver.GetService<FinanceBot.Application.Projections.ISystemHeartbeatWriter>()),
+            options: new ClusterSingletonOptions { Role = null });
+
+        builder.WithSingleton<FinanceBot.Application.Actors.Claude.ClaudeConsultantSingletonMarker>(
+            singletonName: "claude-consultant",
+            propsFactory: (_, _, resolver) =>
+                FinanceBot.Application.Actors.Claude.ClaudeConsultantActor.CreateProps(
+                    resolver.GetService<FinanceBot.Domain.Services.IClaudeClient>(),
+                    resolver.GetService<IOptions<FinanceBot.Application.Actors.Claude.ClaudeConsultantOptions>>()),
             options: new ClusterSingletonOptions { Role = null });
 
         builder.WithSingleton<UsersListProjectionMarker>(

@@ -1,14 +1,19 @@
+using FinanceBot.Application.Actors.Claude;
 using FinanceBot.Application.Projections;
 using FinanceBot.Application.Telegram;
 using FinanceBot.Domain.Services;
 using FinanceBot.Infrastructure.CategoryRules;
+using FinanceBot.Infrastructure.Claude;
 using FinanceBot.Infrastructure.Persistence;
 using FinanceBot.Infrastructure.Projections;
 using FinanceBot.Infrastructure.Telegram;
+using FinanceBot.Infrastructure.Timezone;
+using FinanceBot.Infrastructure.WorkdayCalendar;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Options;
 
 namespace FinanceBot.Infrastructure;
 
@@ -38,7 +43,6 @@ public static class InfrastructureServiceCollectionExtensions
             });
         });
 
-        // AddDbContextFactory регистрирует AppDbContext как scoped за счёт Factory.
         services.AddScoped(sp => sp.GetRequiredService<IDbContextFactory<AppDbContext>>().CreateDbContext());
 
         services.AddHealthChecks()
@@ -50,6 +54,49 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddOptions<TelegramOptions>()
             .Bind(configuration.GetSection(TelegramOptions.SectionName))
             .ValidateOnStart();
+
+        services.AddOptions<ClaudeOptions>()
+            .Bind(configuration.GetSection(ClaudeOptions.SectionName))
+            .ValidateOnStart();
+
+        // Опции для ClaudeConsultantActor — производные от ClaudeOptions.Resilience.
+        services.AddSingleton<IOptions<ClaudeConsultantOptions>>(sp =>
+        {
+            var claude = sp.GetRequiredService<IOptions<ClaudeOptions>>().Value;
+            return Options.Create(new ClaudeConsultantOptions
+            {
+                ConcurrencyLimit = claude.Resilience.ConcurrencyLimit,
+                TransientUnavailableUntilHour = claude.Resilience.TransientUnavailableUntilHour
+            });
+        });
+
+        services.AddHttpClient<IClaudeClient, ClaudeClient>(http =>
+        {
+            http.BaseAddress = new Uri("https://api.anthropic.com");
+            http.Timeout = TimeSpan.FromSeconds(60);
+        });
+
+        services.AddOptions<WorkdayCalendarOptions>()
+            .Bind(configuration.GetSection(WorkdayCalendarOptions.SectionName))
+            .ValidateOnStart();
+
+        var calendarProvider = configuration.GetValue<string>("WorkdayCalendar:Provider")?.ToLowerInvariant() ?? "isdayoff";
+        if (calendarProvider == "static")
+        {
+            services.AddSingleton<IWorkdayCalendar, StaticWorkdayCalendar>();
+        }
+        else
+        {
+            services.AddHttpClient<IWorkdayCalendar, IsDayOffWorkdayCalendar>((sp, http) =>
+            {
+                var opts = sp.GetRequiredService<IOptions<WorkdayCalendarOptions>>().Value;
+                http.BaseAddress = new Uri(opts.BaseUrl);
+                http.Timeout = TimeSpan.FromSeconds(10);
+            });
+        }
+
+        services.AddSingleton<ITimezoneRegistry, TimezoneRegistry>();
+        services.AddSingleton<ISystemHeartbeatWriter, SystemHeartbeatWriter>();
 
         services.AddSingleton<IProjectionOffsetStore, ProjectionOffsetStore>();
         services.AddSingleton<IUsersReadModelWriter, UsersReadModelWriter>();
