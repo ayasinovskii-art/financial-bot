@@ -1,0 +1,59 @@
+## .NET
+bin/
+obj/
+out/
+*.user
+*.suo
+*.userprefs
+*.swp
+*.log
+*.tmp
+*.cache
+
+## VS / Rider / VSCode
+.vs/
+.vscode/
+.idea/
+*.DotSettings.user
+
+## Build output
+TestResults/
+[Dd]ebug/
+[Rr]elease/
+[Xx]64/
+[Xx]86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+artifacts/
+
+## NuGet
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+
+## Coverage
+*.coverage
+*.coveragexml
+coverage*.json
+coverage*.xml
+coverage*.info
+
+## Local secrets
+.env
+.env.local
+*.local.json
+appsettings.Local.json
+
+## OS
+.DS_Store
+Thumbs.db
+
+## Docker
+.docker/
+
+## Misc
+*.pid
+*.seed
+*.lock
+LocalHistory/

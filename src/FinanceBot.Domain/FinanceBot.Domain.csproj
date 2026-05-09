@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>FinanceBot.Domain</RootNamespace>
+    <AssemblyName>FinanceBot.Domain</AssemblyName>
+  </PropertyGroup>
+
+</Project>

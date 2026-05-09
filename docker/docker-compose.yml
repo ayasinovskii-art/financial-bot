@@ -1,0 +1,47 @@
+name: financebot
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: financebot-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-financebot}
+      POSTGRES_USER: ${POSTGRES_USER:-financebot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+    ports:
+      - "5432:5432"
+    volumes:
+      - financebot-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-financebot} -d ${POSTGRES_DB:-financebot}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  bot:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: financebot:dev
+    container_name: financebot-bot
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Default: ${ConnectionStrings__Default:-Host=postgres;Port=5432;Database=financebot;Username=financebot;Password=change-me}
+      Telegram__BotToken: ${Telegram__BotToken:-}
+      Telegram__Mode: ${Telegram__Mode:-Polling}
+      Claude__ApiKey: ${Claude__ApiKey:-}
+      Auth__AdminUserIds__0: ${Auth__AdminUserIds__0:-}
+      Akka__Discovery__Method: ${Akka__Discovery__Method:-config}
+      Akka__Cluster__SeedNodes__0: akka.tcp://financebot@bot:4053
+    ports:
+      - "8080:8080"
+      - "4053:4053"
+
+volumes:
+  financebot-postgres-data:
+    driver: local
