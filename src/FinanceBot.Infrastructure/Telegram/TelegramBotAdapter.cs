@@ -76,6 +76,24 @@ public sealed class TelegramBotAdapter : ITelegramBot
             cancellationToken: ct);
     }
 
+    public async Task SendPhotoAsync(long chatId, byte[] photo, string fileName, string? caption, CancellationToken ct)
+    {
+        if (_client is null)
+        {
+            _log.LogInformation("[stub] Send photo to chat={ChatId}, size={Size} bytes, caption={Caption}",
+                chatId, photo.Length, caption);
+            return;
+        }
+
+        using var stream = new MemoryStream(photo, writable: false);
+        var input = new InputFileStream(stream, fileName);
+        await _client.SendPhoto(
+            chatId: chatId,
+            photo: input,
+            caption: caption,
+            cancellationToken: ct);
+    }
+
     public async Task AnswerCallbackAsync(string callbackQueryId, string? text, CancellationToken ct)
     {
         if (_client is null)

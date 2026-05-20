@@ -113,6 +113,10 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<ITelegramBot, TelegramBotAdapter>();
         services.AddSingleton<FinanceBot.Application.Actors.Advisor.IAdvisorSnapshotReader,
             FinanceBot.Infrastructure.Advisor.AdvisorSnapshotReader>();
+        services.AddSingleton<FinanceBot.Application.Actors.Charts.IChartDataReader,
+            FinanceBot.Infrastructure.Charts.ChartDataReader>();
+        services.AddSingleton<FinanceBot.Application.Actors.Charts.IChartRenderer,
+            FinanceBot.Infrastructure.Charts.ScottPlotChartRenderer>();
 
         return services;
     }

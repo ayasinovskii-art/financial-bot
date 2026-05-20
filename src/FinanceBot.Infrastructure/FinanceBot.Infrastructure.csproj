@@ -26,6 +26,7 @@
     <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" />
     <PackageReference Include="Polly" />
     <PackageReference Include="Telegram.Bot" />
+    <PackageReference Include="ScottPlot" />
   </ItemGroup>
 
   <ItemGroup>

@@ -5,6 +5,7 @@ using FinanceBot.Domain.Events.Budget;
 using FinanceBot.Domain.Events.Categorization;
 using FinanceBot.Domain.Events.Expense;
 using FinanceBot.Domain.Events.Income;
+using FinanceBot.Domain.Events.Reports;
 using FinanceBot.Domain.Events.User;
 using FinanceBot.Domain.Events.Whitelist;
 
@@ -69,6 +70,10 @@ public sealed class EventTagger : IWriteEventAdapter
             case AdviceParked:
             case AdviceResumedWithFreshContext:
                 tags.Add(PersistenceTags.Advisor);
+                break;
+            case ChartRequested:
+            case ChartGenerated:
+                tags.Add(PersistenceTags.Report);
                 break;
         }
 

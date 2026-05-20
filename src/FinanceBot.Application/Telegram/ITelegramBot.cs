@@ -20,6 +20,9 @@ public interface ITelegramBot
     /// <summary>Подтвердить callback (убрать «часики» с кнопки).</summary>
     Task AnswerCallbackAsync(string callbackQueryId, string? text, CancellationToken ct);
 
+    /// <summary>Отправить фото (PNG) с опциональной подписью.</summary>
+    Task SendPhotoAsync(long chatId, byte[] photo, string fileName, string? caption, CancellationToken ct);
+
     /// <summary>Получить пачку обновлений (long-polling). Возвращает offset следующего вызова.</summary>
     Task<TelegramPollResult> PollAsync(long offset, TimeSpan timeout, CancellationToken ct);
 }

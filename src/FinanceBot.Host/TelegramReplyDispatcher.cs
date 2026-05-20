@@ -26,6 +26,7 @@ public sealed class TelegramReplyDispatcher(
         actorSystem.EventStream.Subscribe(_subscriber, typeof(OutgoingTelegramReply));
         actorSystem.EventStream.Subscribe(_subscriber, typeof(OutgoingInlineKeyboard));
         actorSystem.EventStream.Subscribe(_subscriber, typeof(OutgoingCallbackAck));
+        actorSystem.EventStream.Subscribe(_subscriber, typeof(OutgoingTelegramPhoto));
         log.LogInformation("Telegram reply dispatcher subscribed to EventStream.");
         return Task.CompletedTask;
     }
@@ -47,6 +48,19 @@ public sealed class TelegramReplyDispatcher(
             Receive<OutgoingTelegramReply>(reply => _ = SendTextAsync(bot, log, reply));
             Receive<OutgoingInlineKeyboard>(kb => _ = SendKeyboardAsync(bot, log, kb));
             Receive<OutgoingCallbackAck>(ack => _ = AnswerCallbackAsync(bot, log, ack));
+            Receive<OutgoingTelegramPhoto>(photo => _ = SendPhotoAsync(bot, log, photo));
+        }
+
+        private static async Task SendPhotoAsync(ITelegramBot bot, ILogger log, OutgoingTelegramPhoto photo)
+        {
+            try
+            {
+                await bot.SendPhotoAsync(photo.ChatId, photo.Photo, photo.FileName, photo.Caption, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "Failed to deliver telegram photo to chat={ChatId}.", photo.ChatId);
+            }
         }
 
         private static async Task SendTextAsync(ITelegramBot bot, ILogger log, OutgoingTelegramReply reply)

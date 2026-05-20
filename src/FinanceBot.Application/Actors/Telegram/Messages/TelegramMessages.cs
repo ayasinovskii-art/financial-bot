@@ -28,6 +28,13 @@ public sealed record OutgoingInlineKeyboard(
 /// <summary>Подтверждение нажатия inline-кнопки.</summary>
 public sealed record OutgoingCallbackAck(string CallbackQueryId, string? Text);
 
+/// <summary>Отправить фото (PNG) с подписью пользователю.</summary>
+public sealed record OutgoingTelegramPhoto(
+    long ChatId,
+    byte[] Photo,
+    string FileName,
+    string? Caption);
+
 /// <summary>Входящий callback от inline-кнопки.</summary>
 public sealed record IncomingCallbackQuery(
     long UpdateId,

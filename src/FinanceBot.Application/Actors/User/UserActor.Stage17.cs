@@ -158,6 +158,7 @@ public sealed partial class UserActor
             {
                 // Обрабатываем как обычно (используя HandleReportExpense), но после первой траты выходим из FSM.
                 HandleReportExpense(cmd);
+                TriggerEveningCategoryChart();
                 ExitAwaitingDailyExpenses();
             });
 
@@ -237,6 +238,7 @@ public sealed partial class UserActor
             {
                 MaybeSnapshot();
                 Context.System.EventStream.Publish(new OutgoingTelegramReply(chatId, summary));
+                TriggerEveningCategoryChart();
                 ExitAwaitingDailyExpenses();
             }
         });

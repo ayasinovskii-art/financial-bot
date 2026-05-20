@@ -188,6 +188,13 @@ public static class ApplicationServiceCollectionExtensions
                     resolver.GetService<FinanceBot.Application.Actors.Advisor.IAdvisorSnapshotReader>()),
                 "advisor");
             registry.Register<FinanceBot.Application.Actors.Advisor.AdvisorActorMarker>(advisor);
+
+            var chartPool = system.ActorOf(
+                FinanceBot.Application.Actors.Charts.ChartRendererActor.CreatePoolProps(
+                    resolver.GetService<FinanceBot.Application.Actors.Charts.IChartRenderer>(),
+                    workers: 4),
+                "chart-renderer-pool");
+            registry.Register<FinanceBot.Application.Actors.Charts.ChartRendererPoolMarker>(chartPool);
         });
     }
 }
