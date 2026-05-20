@@ -39,6 +39,7 @@ public sealed partial class TelegramGatewayActor
         WireStage15();
         WireStage19();
         WireStage20();
+        WireStage21();
     }
 
     partial void WireStage6();
@@ -51,6 +52,7 @@ public sealed partial class TelegramGatewayActor
     partial void WireStage15();
     partial void WireStage19();
     partial void WireStage20();
+    partial void WireStage21();
 
     partial void HandleAddUser(IncomingTelegramUpdate update, string args, AccessDecision.Allowed allowed);
     partial void HandleRemoveUser(IncomingTelegramUpdate update, string args, AccessDecision.Allowed allowed);
@@ -67,6 +69,7 @@ public sealed partial class TelegramGatewayActor
     partial void HandleSavings(IncomingTelegramUpdate update, string args, AccessDecision.Allowed allowed);
     partial void HandleAdvice(IncomingTelegramUpdate update, string args, AccessDecision.Allowed allowed);
     partial void HandleChart(IncomingTelegramUpdate update, string args, AccessDecision.Allowed allowed);
+    partial void HandleReport(IncomingTelegramUpdate update, string args, AccessDecision.Allowed allowed);
 
     private void HandleIncomingUpdate(IncomingTelegramUpdate update)
     {
@@ -175,6 +178,10 @@ public sealed partial class TelegramGatewayActor
 
             case TelegramCommandKind.Chart:
                 HandleChart(update, parsed.ArgumentLine, allowed);
+                break;
+
+            case TelegramCommandKind.Report:
+                HandleReport(update, parsed.ArgumentLine, allowed);
                 break;
 
             default:

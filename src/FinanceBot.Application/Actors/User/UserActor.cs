@@ -80,6 +80,7 @@ public sealed partial class UserActor : ReceivePersistentActor
         WireStage18();
         WireStage19();
         WireStage20();
+        WireStage21();
 
         CommandAny(msg => _log.Debug("UserActor[{UserId}] received unhandled {MessageType}", _userId, msg.GetType().Name));
     }
@@ -88,6 +89,7 @@ public sealed partial class UserActor : ReceivePersistentActor
     partial void WireStage18();
     partial void WireStage19();
     partial void WireStage20();
+    partial void WireStage21();
 
     private void HandleRegister(RegisterUser cmd)
     {

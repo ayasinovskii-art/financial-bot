@@ -117,6 +117,8 @@ public static class InfrastructureServiceCollectionExtensions
             FinanceBot.Infrastructure.Charts.ChartDataReader>();
         services.AddSingleton<FinanceBot.Application.Actors.Charts.IChartRenderer,
             FinanceBot.Infrastructure.Charts.ScottPlotChartRenderer>();
+        services.AddSingleton<FinanceBot.Application.Actors.Reports.IReportBuilder,
+            FinanceBot.Infrastructure.Reports.ReportBuilder>();
 
         return services;
     }
