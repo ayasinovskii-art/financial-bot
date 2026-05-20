@@ -182,6 +182,12 @@ public static class ApplicationServiceCollectionExtensions
                     resolver.GetService<FinanceBot.Domain.Services.ICategoryRules>()),
                 "categorizer");
             registry.Register<FinanceBot.Application.Actors.Categorizer.CategorizerActorMarker>(categorizer);
+
+            var advisor = system.ActorOf(
+                FinanceBot.Application.Actors.Advisor.AdvisorActor.CreateProps(
+                    resolver.GetService<FinanceBot.Application.Actors.Advisor.IAdvisorSnapshotReader>()),
+                "advisor");
+            registry.Register<FinanceBot.Application.Actors.Advisor.AdvisorActorMarker>(advisor);
         });
     }
 }

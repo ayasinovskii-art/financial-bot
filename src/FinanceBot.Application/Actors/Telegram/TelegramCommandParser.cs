@@ -36,6 +36,15 @@ public enum TelegramCommandKind
     // Stage 15 — savings
     Savings = 70,
 
+    // Stage 19 — advisor
+    Advice = 80,
+
+    // Stage 20 — charts
+    Chart = 90,
+
+    // Stage 21 — report
+    Report = 95,
+
     Unknown = 99
 }
 
@@ -88,6 +97,9 @@ public static class TelegramCommandParser
             "template" => TelegramCommandKind.Template,
             "plan" => TelegramCommandKind.Plan,
             "savings" => TelegramCommandKind.Savings,
+            "advice" => TelegramCommandKind.Advice,
+            "chart" => TelegramCommandKind.Chart,
+            "report" => TelegramCommandKind.Report,
             _ => TelegramCommandKind.Unknown
         };
 

@@ -111,6 +111,8 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<ICategoryBucketMap, DefaultCategoryBucketMap>();
         services.AddSingleton<ICategoryRules, JsonCategoryRules>();
         services.AddSingleton<ITelegramBot, TelegramBotAdapter>();
+        services.AddSingleton<FinanceBot.Application.Actors.Advisor.IAdvisorSnapshotReader,
+            FinanceBot.Infrastructure.Advisor.AdvisorSnapshotReader>();
 
         return services;
     }

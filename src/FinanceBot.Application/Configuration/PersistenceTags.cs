@@ -9,6 +9,7 @@ public static class PersistenceTags
     public const string Category = "category";
     public const string Whitelist = "whitelist";
     public const string Settings = "settings";
+    public const string Advisor = "advisor";
 
     /// <summary>Тег жизненного цикла пользователя: UserRegistered + UserSettingsUpdated. Используется UsersListProjection.</summary>
     public const string UserLifecycle = "user-lifecycle";

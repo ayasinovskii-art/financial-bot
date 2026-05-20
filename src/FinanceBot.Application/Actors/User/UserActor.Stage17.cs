@@ -38,8 +38,6 @@ public sealed partial class UserActor
         Command<EveningTickFired>(OnEveningTickInIdle);
         Command<EveningPromptPrepared>(OnEveningPromptPrepared);
         Command<SalaryDayTickFired>(OnSalaryDayTick);
-        Command<WeeklyAdvisorTickFired>(_ => { /* Stage 19 */ });
-        Command<MonthlyAdvisorTickFired>(_ => { /* Stage 19 */ });
         Command<SilenceDeadlineFired>(_ => { /* ignore in Idle */ });
     }
 

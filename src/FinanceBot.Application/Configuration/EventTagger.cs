@@ -1,5 +1,6 @@
 using Akka.Persistence.Journal;
 using FinanceBot.Domain.Events;
+using FinanceBot.Domain.Events.Advisor;
 using FinanceBot.Domain.Events.Budget;
 using FinanceBot.Domain.Events.Categorization;
 using FinanceBot.Domain.Events.Expense;
@@ -62,6 +63,12 @@ public sealed class EventTagger : IWriteEventAdapter
                 break;
             case UserRegistered:
                 tags.Add(PersistenceTags.UserLifecycle);
+                break;
+            case ConsultationRequested:
+            case ConsultationAnswered:
+            case AdviceParked:
+            case AdviceResumedWithFreshContext:
+                tags.Add(PersistenceTags.Advisor);
                 break;
         }
 
