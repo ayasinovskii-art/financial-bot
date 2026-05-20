@@ -46,6 +46,9 @@
     <PackageVersion Include="Akka.Cluster.Sharding" Version="1.5.37" />
     <PackageVersion Include="Akka.Cluster.Tools" Version="1.5.37" />
     <PackageVersion Include="Akka.Discovery" Version="1.5.37" />
+    <PackageVersion Include="Akka.Discovery.KubernetesApi" Version="1.5.37" />
+    <PackageVersion Include="Akka.Management" Version="1.5.37" />
+    <PackageVersion Include="Akka.Management.Cluster.Bootstrap" Version="1.5.37" />
     <PackageVersion Include="Akka.Serialization.Hyperion" Version="1.5.37" />
     <PackageVersion Include="Akka.Remote" Version="1.5.37" />
     <PackageVersion Include="Akka.Remote.Hosting" Version="1.5.37" />

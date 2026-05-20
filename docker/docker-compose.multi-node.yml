@@ -1,0 +1,82 @@
+name: financebot-multi
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: financebot-multi-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-financebot}
+      POSTGRES_USER: ${POSTGRES_USER:-financebot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+    ports:
+      - "5432:5432"
+    volumes:
+      - financebot-multi-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-financebot} -d ${POSTGRES_DB:-financebot}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  bot1:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: financebot:dev
+    container_name: financebot-bot1
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=${POSTGRES_DB:-financebot};Username=${POSTGRES_USER:-financebot};Password=${POSTGRES_PASSWORD:-change-me}
+      Telegram__BotToken: ${Telegram__BotToken:-}
+      Telegram__Mode: ${Telegram__Mode:-Polling}
+      Claude__ApiKey: ${Claude__ApiKey:-}
+      Auth__AdminUserIds__0: ${Auth__AdminUserIds__0:-}
+      # Akka cluster: оба ноды используют общий seed bot1:4053.
+      Akka__Hostname: bot1
+      Akka__Port: "4053"
+      Akka__Cluster__SeedNodes__0: akka.tcp://financebot@bot1:4053
+      Akka__Cluster__MinimumMembers: "1"
+    ports:
+      - "8081:8080"
+      - "4053:4053"
+
+  bot2:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: financebot:dev
+    container_name: financebot-bot2
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      bot1:
+        condition: service_started
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=${POSTGRES_DB:-financebot};Username=${POSTGRES_USER:-financebot};Password=${POSTGRES_PASSWORD:-change-me}
+      Telegram__BotToken: ${Telegram__BotToken:-}
+      # bot2 не делает polling — единственный consumer Telegram updates это bot1.
+      # Если используется webhook — Telegram сам шлёт обновления на оба ноды (через LB).
+      Telegram__Mode: Webhook
+      Telegram__WebhookUrl: ${Telegram__WebhookUrl:-}
+      Claude__ApiKey: ${Claude__ApiKey:-}
+      Auth__AdminUserIds__0: ${Auth__AdminUserIds__0:-}
+      Akka__Hostname: bot2
+      Akka__Port: "4053"
+      Akka__Cluster__SeedNodes__0: akka.tcp://financebot@bot1:4053
+      Akka__Cluster__MinimumMembers: "1"
+    ports:
+      - "8082:8080"
+      - "4054:4053"
+
+volumes:
+  financebot-multi-postgres-data:
+    driver: local

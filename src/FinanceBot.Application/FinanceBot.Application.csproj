@@ -21,6 +21,7 @@
     <PackageReference Include="Akka.Cluster.Sharding" />
     <PackageReference Include="Akka.Cluster.Tools" />
     <PackageReference Include="Akka.Discovery" />
+    <PackageReference Include="Akka.Discovery.KubernetesApi" />
     <PackageReference Include="Akka.Remote.Hosting" />
     <PackageReference Include="Akka.Serialization.Hyperion" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />

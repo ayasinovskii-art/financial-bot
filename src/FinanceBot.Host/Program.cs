@@ -4,11 +4,14 @@ using FinanceBot.Application;
 using FinanceBot.Host;
 using FinanceBot.Infrastructure;
 using FinanceBot.Infrastructure.Persistence;
+using FinanceBot.Infrastructure.Telegram;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -37,12 +40,26 @@ builder.Services.AddFinanceBotApplication(builder.Configuration, (akka, _) =>
 
 builder.Services.AddHostedService<DatabaseMigrationService>();
 builder.Services.AddHostedService<TelegramReplyDispatcher>();
-builder.Services.AddHostedService<TelegramPollingHostedService>();
+
+var telegramMode = builder.Configuration.GetValue<string>("Telegram:Mode") ?? "Polling";
+if (string.Equals(telegramMode, "Webhook", StringComparison.OrdinalIgnoreCase))
+{
+    builder.Services.AddHostedService<TelegramWebhookSetupService>();
+}
+else
+{
+    builder.Services.AddHostedService<TelegramPollingHostedService>();
+}
 
 var app = builder.Build();
 
 app.MapHealthChecks("/health");
 
 app.MapGet("/", () => Results.Ok(new { service = "FinanceBot", status = "ok" }));
+
+if (string.Equals(telegramMode, "Webhook", StringComparison.OrdinalIgnoreCase))
+{
+    app.MapTelegramWebhook();
+}
 
 app.Run();

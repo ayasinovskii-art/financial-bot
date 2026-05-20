@@ -108,6 +108,28 @@ public sealed class TelegramBotAdapter : ITelegramBot
             cancellationToken: ct);
     }
 
+    /// <summary>Установить webhook URL. Возвращает true если установка прошла (или адаптер в stub-mode).</summary>
+    public async Task<bool> SetWebhookAsync(string url, CancellationToken ct)
+    {
+        if (_client is null)
+        {
+            _log.LogInformation("[stub] SetWebhook: {Url}", url);
+            return true;
+        }
+        await _client.SetWebhook(
+            url: url,
+            allowedUpdates: [global::Telegram.Bot.Types.Enums.UpdateType.Message, global::Telegram.Bot.Types.Enums.UpdateType.CallbackQuery],
+            cancellationToken: ct);
+        return true;
+    }
+
+    /// <summary>Удалить webhook (использовать перед переключением обратно на polling).</summary>
+    public async Task DeleteWebhookAsync(CancellationToken ct)
+    {
+        if (_client is null) return;
+        await _client.DeleteWebhook(cancellationToken: ct);
+    }
+
     public async Task<TelegramPollResult> PollAsync(long offset, TimeSpan timeout, CancellationToken ct)
     {
         if (_client is null)
@@ -130,33 +152,9 @@ public sealed class TelegramBotAdapter : ITelegramBot
         foreach (var update in updates)
         {
             nextOffset = Math.Max(nextOffset, update.Id + 1);
-
-            if (update.Message is { From: { } messageFrom } message)
-            {
-                convertedUpdates.Add(new IncomingTelegramUpdate(
-                    UpdateId: update.Id,
-                    ChatId: message.Chat.Id,
-                    TelegramId: messageFrom.Id,
-                    Username: messageFrom.Username,
-                    FirstName: messageFrom.FirstName,
-                    LastName: messageFrom.LastName,
-                    Text: message.Text,
-                    SentAt: new DateTimeOffset(message.Date, TimeSpan.Zero)));
-                continue;
-            }
-
-            if (update.CallbackQuery is { Data: { } data, Message: { } cbMessage } cb)
-            {
-                convertedCallbacks.Add(new IncomingCallbackQuery(
-                    UpdateId: update.Id,
-                    CallbackQueryId: cb.Id,
-                    ChatId: cbMessage.Chat.Id,
-                    TelegramId: cb.From.Id,
-                    Username: cb.From.Username,
-                    FirstName: cb.From.FirstName,
-                    Data: data,
-                    SentAt: DateTimeOffset.UtcNow));
-            }
+            var (converted, callback) = TelegramUpdateConverter.TryConvert(update);
+            if (converted is not null) convertedUpdates.Add(converted);
+            if (callback is not null) convertedCallbacks.Add(callback);
         }
 
         return new TelegramPollResult(convertedUpdates, convertedCallbacks, nextOffset);

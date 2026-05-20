@@ -25,6 +25,12 @@ public interface ITelegramBot
 
     /// <summary>Получить пачку обновлений (long-polling). Возвращает offset следующего вызова.</summary>
     Task<TelegramPollResult> PollAsync(long offset, TimeSpan timeout, CancellationToken ct);
+
+    /// <summary>Установить webhook URL (alternative к polling).</summary>
+    Task<bool> SetWebhookAsync(string url, CancellationToken ct);
+
+    /// <summary>Удалить webhook.</summary>
+    Task DeleteWebhookAsync(CancellationToken ct);
 }
 
 /// <summary>Результат одного цикла long-polling.</summary>
