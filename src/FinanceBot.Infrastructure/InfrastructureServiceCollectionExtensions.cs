@@ -51,7 +51,11 @@ public static class InfrastructureServiceCollectionExtensions
             .AddCheck<PostgresHealthCheck>(
                 "postgres",
                 failureStatus: HealthStatus.Unhealthy,
-                tags: ["db", "ready"]);
+                tags: ["db", "ready"])
+            .AddCheck<FinanceBot.Infrastructure.Health.AkkaClusterHealthCheck>(
+                "akka-cluster",
+                failureStatus: HealthStatus.Unhealthy,
+                tags: ["akka", "ready"]);
 
         services.AddOptions<TelegramOptions>()
             .Bind(configuration.GetSection(TelegramOptions.SectionName))

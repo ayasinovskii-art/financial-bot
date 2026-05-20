@@ -2,6 +2,7 @@ namespace FinanceBot.Application.Actors.Telegram.Messages;
 
 /// <summary>
 /// Входящее сообщение от Telegram. Создаётся polling/webhook-сервисом, маршрутизируется в <c>TelegramGatewayActor</c>.
+/// CorrelationId — генерируется при приёме (для трассировки в логах).
 /// </summary>
 public sealed record IncomingTelegramUpdate(
     long UpdateId,
@@ -11,7 +12,10 @@ public sealed record IncomingTelegramUpdate(
     string? FirstName,
     string? LastName,
     string? Text,
-    DateTimeOffset SentAt);
+    DateTimeOffset SentAt)
+{
+    public Guid CorrelationId { get; init; } = Guid.NewGuid();
+}
 
 /// <summary>Внутреннее сообщение от gateway: «отправить ответ пользователю».</summary>
 public sealed record OutgoingTelegramReply(
@@ -44,4 +48,7 @@ public sealed record IncomingCallbackQuery(
     string? Username,
     string? FirstName,
     string Data,
-    DateTimeOffset SentAt);
+    DateTimeOffset SentAt)
+{
+    public Guid CorrelationId { get; init; } = Guid.NewGuid();
+}

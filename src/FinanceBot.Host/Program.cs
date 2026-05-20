@@ -40,6 +40,7 @@ builder.Services.AddFinanceBotApplication(builder.Configuration, (akka, _) =>
 
 builder.Services.AddHostedService<DatabaseMigrationService>();
 builder.Services.AddHostedService<TelegramReplyDispatcher>();
+builder.Services.AddHostedService<GracefulClusterShutdownService>();
 
 var telegramMode = builder.Configuration.GetValue<string>("Telegram:Mode") ?? "Polling";
 if (string.Equals(telegramMode, "Webhook", StringComparison.OrdinalIgnoreCase))

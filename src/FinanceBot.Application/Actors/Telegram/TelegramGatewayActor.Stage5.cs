@@ -73,12 +73,15 @@ public sealed partial class TelegramGatewayActor
 
     private void HandleIncomingUpdate(IncomingTelegramUpdate update)
     {
+        _log.Debug("Incoming update {UpdateId} corr={CorrelationId} from telegramId={TelegramId} text={Text}",
+            update.UpdateId, update.CorrelationId, update.TelegramId, update.Text);
         var parsed = TelegramCommandParser.TryParse(update.Text);
         var registry = ActorRegistry.For(Context.System);
 
         if (!registry.TryGet<AccessControlSingletonMarker>(out var accessControl))
         {
-            _log.Warning("AccessControlActor not available; dropping update {UpdateId}.", update.UpdateId);
+            _log.Warning("AccessControlActor not available; dropping update {UpdateId} corr={CorrelationId}.",
+                update.UpdateId, update.CorrelationId);
             return;
         }
 
