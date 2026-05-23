@@ -16,6 +16,7 @@ public enum ClaudeUnavailabilityReason
     RateLimited = 2,
     TransientError = 3,
     Timeout = 4,
+    Overloaded = 5,
     Other = 99
 }
 

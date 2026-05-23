@@ -30,6 +30,10 @@ builder.Services.AddFinanceBotInfrastructure(builder.Configuration);
 var connectionString = builder.Configuration.GetConnectionString("Default")
     ?? throw new InvalidOperationException("ConnectionStrings:Default is required.");
 
+// Миграции read-model должны завершиться ДО старта Akka — иначе проекции стартуют
+// раньше создания таблиц app.* и уходят в restart-loop на app.projection_offsets.
+builder.Services.AddHostedService<DatabaseMigrationService>();
+
 builder.Services.AddFinanceBotApplication(builder.Configuration, (akka, _) =>
 {
     akka.WithPostgreSqlPersistence(
@@ -38,7 +42,6 @@ builder.Services.AddFinanceBotApplication(builder.Configuration, (akka, _) =>
         autoInitialize: true);
 });
 
-builder.Services.AddHostedService<DatabaseMigrationService>();
 builder.Services.AddHostedService<TelegramReplyDispatcher>();
 builder.Services.AddHostedService<GracefulClusterShutdownService>();
 

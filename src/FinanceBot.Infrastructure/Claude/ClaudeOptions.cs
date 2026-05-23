@@ -6,7 +6,7 @@ public sealed class ClaudeOptions
     public const string SectionName = "Claude";
 
     public string ApiKey { get; init; } = string.Empty;
-    public string Model { get; init; } = "claude-sonnet-4-5";
+    public string Model { get; init; } = "claude-sonnet-4-6";
     public int MaxTokensPerRequest { get; init; } = 1024;
     public ResilienceSection Resilience { get; init; } = new();
 

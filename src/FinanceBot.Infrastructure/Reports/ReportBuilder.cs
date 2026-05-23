@@ -39,9 +39,9 @@ public sealed class ReportBuilder(IDbContextFactory<AppDbContext> dbFactory) : I
         var sb = new StringBuilder(1024);
         sb.AppendLine(FormatHeader(period, periodsAgo));
         sb.AppendLine();
-        sb.AppendLine($"Доход: {Money(period.TotalIncome)}");
-        sb.AppendLine($"Расходы: {Money(current.TotalSpent)}");
-        sb.AppendLine($"Накопления (факт): {(period.SavingsActual is { } sv ? Money(sv) : "—")}");
+        sb.AppendLine($"Доход: {Fmt(period.TotalIncome)}");
+        sb.AppendLine($"Расходы: {Fmt(current.TotalSpent)}");
+        sb.AppendLine($"Накопления (факт): {(period.SavingsActual is { } sv ? Fmt(sv) : "—")}");
 
         sb.AppendLine();
         sb.AppendLine("По бакетам:");
@@ -55,7 +55,7 @@ public sealed class ReportBuilder(IDbContextFactory<AppDbContext> dbFactory) : I
             sb.AppendLine("По категориям:");
             foreach (var c in current.ByCategory.OrderByDescending(c => c.Spent))
             {
-                sb.AppendLine($"• {c.Category}: {Money(c.Spent)}");
+                sb.AppendLine($"• {c.Category}: {Fmt(c.Spent)}");
             }
         }
 
@@ -65,7 +65,7 @@ public sealed class ReportBuilder(IDbContextFactory<AppDbContext> dbFactory) : I
             sb.AppendLine("Крупнейшие траты:");
             foreach (var e in topExpenses)
             {
-                sb.AppendLine($"• {e.OccurredAt:yyyy-MM-dd} {e.Description}: {Money(e.Amount)} [{e.Category}]");
+                sb.AppendLine($"• {e.OccurredAt:yyyy-MM-dd} {e.Description}: {Fmt(e.Amount)} [{e.Category}]");
             }
         }
 
@@ -95,22 +95,22 @@ public sealed class ReportBuilder(IDbContextFactory<AppDbContext> dbFactory) : I
     {
         var remaining = allocation - spent;
         var pct = allocation > 0m ? Math.Round(spent / allocation * 100m, MidpointRounding.AwayFromZero) : 0m;
-        sb.AppendLine($"• {name}: {Money(spent)} / {Money(allocation)} ({pct}%), осталось {Money(remaining)}");
+        sb.AppendLine($"• {name}: {Fmt(spent)} / {Fmt(allocation)} ({pct}%), осталось {Fmt(remaining)}");
     }
 
     private static void AppendDelta(StringBuilder sb, string label, decimal current, decimal previous)
     {
         if (previous == 0m)
         {
-            sb.AppendLine($"• {label}: {Money(current)} (предыдущее = 0)");
+            sb.AppendLine($"• {label}: {Fmt(current)} (предыдущее = 0)");
             return;
         }
         var pct = Math.Round((current - previous) / previous * 100m, MidpointRounding.AwayFromZero);
         var sign = pct >= 0m ? "+" : string.Empty;
-        sb.AppendLine($"• {label}: {Money(current)} ({sign}{pct}% к {Money(previous)})");
+        sb.AppendLine($"• {label}: {Fmt(current)} ({sign}{pct}% к {Fmt(previous)})");
     }
 
-    private static string Money(decimal v) => v.ToString("0.00", CultureInfo.InvariantCulture);
+    private static string Fmt(decimal v) => v.ToString("0.00", CultureInfo.InvariantCulture);
 
     private static async Task<PeriodAggregate> LoadAggregateAsync(AppDbContext db, Guid userId, PeriodEntity p, CancellationToken ct)
     {

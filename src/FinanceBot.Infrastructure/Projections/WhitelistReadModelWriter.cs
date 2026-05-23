@@ -33,12 +33,8 @@ public sealed class WhitelistReadModelWriter(IDbContextFactory<AppDbContext> dbF
     public async Task MarkRevokedAsync(long telegramId, DateTimeOffset revokedAt, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var existing = await db.Whitelist.FirstOrDefaultAsync(x => x.TelegramId == telegramId, ct);
-        if (existing is null)
-        {
-            return;
-        }
-        existing.RevokedAt = revokedAt;
-        await db.SaveChangesAsync(ct);
+        await db.Whitelist
+            .Where(x => x.TelegramId == telegramId)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.RevokedAt, (DateTimeOffset?)revokedAt), ct);
     }
 }

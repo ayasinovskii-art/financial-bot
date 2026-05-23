@@ -22,9 +22,9 @@ public static class AdvicePromptBuilder
 
         if (snap.CurrentPeriod is { } cur)
         {
-            sb.AppendLine($"Текущий период: с {cur.StartDate:yyyy-MM-dd}, доход {Money(cur.TotalIncome)}.");
-            sb.AppendLine($"Аллокации (essentials/fun/deposit): {Money(cur.AllocationEssentials)} / {Money(cur.AllocationFun)} / {Money(cur.AllocationDeposit)}.");
-            sb.AppendLine($"Потрачено (essentials/fun/deposit): {Money(cur.SpentEssentials)} / {Money(cur.SpentFun)} / {Money(cur.SpentDeposit)}.");
+            sb.AppendLine($"Текущий период: с {cur.StartDate:yyyy-MM-dd}, доход {Fmt(cur.TotalIncome)}.");
+            sb.AppendLine($"Аллокации (essentials/fun/deposit): {Fmt(cur.AllocationEssentials)} / {Fmt(cur.AllocationFun)} / {Fmt(cur.AllocationDeposit)}.");
+            sb.AppendLine($"Потрачено (essentials/fun/deposit): {Fmt(cur.SpentEssentials)} / {Fmt(cur.SpentFun)} / {Fmt(cur.SpentDeposit)}.");
             if (snap.DaysToEndOfPeriod is { } d)
             {
                 sb.AppendLine($"Дней до конца периода: ~{d}.");
@@ -41,20 +41,20 @@ public static class AdvicePromptBuilder
             sb.AppendLine("Расходы по категориям (текущий период):");
             foreach (var c in snap.CurrentByCategory.OrderByDescending(c => c.Spent).Take(8))
             {
-                sb.AppendLine($"- {c.Category} ({c.Bucket}): {Money(c.Spent)}, операций {c.Count}.");
+                sb.AppendLine($"- {c.Category} ({c.Bucket}): {Fmt(c.Spent)}, операций {c.Count}.");
             }
         }
 
         if (snap.PreviousPeriod is { } prev)
         {
             sb.AppendLine();
-            sb.AppendLine($"Предыдущий период с {prev.StartDate:yyyy-MM-dd}: доход {Money(prev.TotalIncome)}, накопления {Money(prev.SavingsActual ?? 0m)}.");
+            sb.AppendLine($"Предыдущий период с {prev.StartDate:yyyy-MM-dd}: доход {Fmt(prev.TotalIncome)}, накопления {Fmt(prev.SavingsActual ?? 0m)}.");
             if (snap.PreviousByCategory.Count > 0)
             {
                 sb.AppendLine("Расходы по категориям (предыдущий период):");
                 foreach (var c in snap.PreviousByCategory.OrderByDescending(c => c.Spent).Take(8))
                 {
-                    sb.AppendLine($"- {c.Category}: {Money(c.Spent)}.");
+                    sb.AppendLine($"- {c.Category}: {Fmt(c.Spent)}.");
                 }
             }
         }
@@ -65,7 +65,7 @@ public static class AdvicePromptBuilder
             sb.AppendLine("Крупнейшие траты:");
             foreach (var e in snap.TopExpenses.Take(5))
             {
-                sb.AppendLine($"- {e.OccurredAt:yyyy-MM-dd} {e.Description}: {Money(e.Amount)} [{e.Category}].");
+                sb.AppendLine($"- {e.OccurredAt:yyyy-MM-dd} {e.Description}: {Fmt(e.Amount)} [{e.Category}].");
             }
         }
 
@@ -74,5 +74,5 @@ public static class AdvicePromptBuilder
         return sb.ToString().TrimEnd();
     }
 
-    private static string Money(decimal v) => v.ToString("0.00", CultureInfo.InvariantCulture);
+    private static string Fmt(decimal v) => v.ToString("0.00", CultureInfo.InvariantCulture);
 }

@@ -43,15 +43,15 @@ public sealed class ExpenseReadModelWriter(IDbContextFactory<AppDbContext> dbFac
         Guid expenseId, Category newCategory, Bucket newBucket, ExpenseSource source, bool needsReview, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var existing = await db.Expenses.FindAsync([expenseId], ct);
-        if (existing is null)
-        {
-            return;
-        }
-        existing.Category = newCategory.ToString();
-        existing.Bucket = newBucket.ToString();
-        existing.Source = source.ToWireName();
-        existing.NeedsReview = needsReview;
-        await db.SaveChangesAsync(ct);
+        var categoryStr = newCategory.ToString();
+        var bucketStr = newBucket.ToString();
+        var sourceStr = source.ToWireName();
+        await db.Expenses
+            .Where(e => e.ExpenseId == expenseId)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(e => e.Category, categoryStr)
+                .SetProperty(e => e.Bucket, bucketStr)
+                .SetProperty(e => e.Source, sourceStr)
+                .SetProperty(e => e.NeedsReview, needsReview), ct);
     }
 }

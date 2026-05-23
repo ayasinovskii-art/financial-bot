@@ -15,7 +15,7 @@ using FinanceBot.Domain.Services;
 namespace FinanceBot.Application.Actors.User;
 
 /// <summary>
-/// Stage 19: advisor pipeline. На /advice или WeeklyAdvisorTickFired/MonthlyAdvisorTickFired —
+/// Advisor pipeline. На /advice или WeeklyAdvisorTickFired/MonthlyAdvisorTickFired —
 /// строим snapshot через AdvisorActor, отправляем prompt в ClaudeConsultantActor, отвечаем пользователю.
 /// При Unavailable + tick → persist AdviceParked, ждём ClaudeBecameAvailable на EventStream и повторяем.
 /// При Unavailable + /advice → fallback на локальный совет от AdvisorActor.
@@ -28,7 +28,7 @@ public sealed partial class UserActor
     private bool _adviceParkedAwaitingRecovery;
     private AdvisorTickType _parkedTickType;
 
-    partial void WireStage19()
+    partial void WireAdvice()
     {
         Recover<ConsultationRequested>(_ => { /* informational */ });
         Recover<ConsultationAnswered>(_ => { /* informational */ });

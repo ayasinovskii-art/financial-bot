@@ -11,38 +11,38 @@ public enum TelegramCommandKind
     WhoAmI = 3,
     Cancel = 4,
 
-    // Stage 6 — admin
+    // admin
     AddUser = 10,
     RemoveUser = 11,
     ListUsers = 12,
 
-    // Stage 7 — settings
+    // settings
     Settings = 20,
 
-    // Stage 8 — income
+    // income
     Income = 30,
 
-    // Stage 9 — expenses
+    // expenses
     Expense = 40,
     ExpenseDay = 41,
     Correct = 42,
 
-    // Stage 13 — recurring templates
+    // recurring templates
     Template = 50,
 
-    // Stage 14 — planned expenses
+    // planned expenses
     Plan = 60,
 
-    // Stage 15 — savings
+    // savings
     Savings = 70,
 
-    // Stage 19 — advisor
+    // advisor
     Advice = 80,
 
-    // Stage 20 — charts
+    // charts
     Chart = 90,
 
-    // Stage 21 — report
+    // report
     Report = 95,
 
     Unknown = 99

@@ -26,10 +26,13 @@ public abstract class ProjectionBase : ReceiveActor
         _log = Context.GetLogger();
 
         Receive<StartProjection>(_ => Start());
+        Receive<ProjectionInit>(_ => Sender.Tell(new ProjectionAck()));
         Receive<EventEnvelope>(HandleEnvelope);
+        Receive<ProjectionComplete>(_ =>
+            _log.Info("Projection {0} stream completed.", ProjectionName));
         Receive<ProjectionFailed>(failed =>
         {
-            _log.Error(failed.Cause, "Projection {ProjectionName} stream failed; restarting.", ProjectionName);
+            _log.Error(failed.Cause, "Projection {0} stream failed; restarting.", ProjectionName);
             Self.Tell(new StartProjection());
         });
     }
@@ -57,7 +60,12 @@ public abstract class ProjectionBase : ReceiveActor
 
     private void Start()
     {
+        // Захватываем все actor-context зависимости ДО ухода в Task.Run —
+        // внутри Task.Run актор-context недоступен (другой поток).
         var self = Self;
+        var system = Context.System;
+        var materializer = Context.Materializer();
+
         Task.Run(async () =>
         {
             try
@@ -65,8 +73,8 @@ public abstract class ProjectionBase : ReceiveActor
                 var offsetValue = await _offsetStore.LoadAsync(ProjectionName, CancellationToken.None);
                 var offset = offsetValue == 0 ? Offset.NoOffset() : Offset.Sequence(offsetValue);
 
-                var readJournal = PersistenceQuery.Get(Context.System)
-                    .ReadJournalFor<IEventsByTagQuery>("akka.persistence.query.journal.postgresql");
+                var readJournal = PersistenceQuery.Get(system)
+                    .ReadJournalFor<IEventsByTagQuery>("akka.persistence.query.journal.sql");
 
                 var (kill, completion) = readJournal.EventsByTag(Tag, offset)
                     .ViaMaterialized(KillSwitches.Single<EventEnvelope>(), Keep.Right)
@@ -76,7 +84,7 @@ public abstract class ProjectionBase : ReceiveActor
                         ackMessage: new ProjectionAck(),
                         onCompleteMessage: new ProjectionComplete(),
                         onFailureMessage: ex => new ProjectionFailed(ex)), Keep.Both)
-                    .Run(Context.Materializer());
+                    .Run(materializer);
 
                 _killSwitch = kill;
                 _ = completion;

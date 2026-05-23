@@ -41,3 +41,21 @@ public sealed class AkkaOptions
         public string ShardCoordinatorMode { get; init; } = "ddata";
     }
 }
+
+/// <summary>Дефолты, применяемые при первичной регистрации юзера (секция "Defaults").</summary>
+public sealed class UserDefaultsOptions
+{
+    public const string SectionName = "Defaults";
+
+    /// <summary>IANA timezone id, который ставится новому юзеру до /settings timezone.</summary>
+    public string Timezone { get; init; } = "Europe/Moscow";
+}
+
+/// <summary>Системные настройки планировщика (секция "Scheduler").</summary>
+public sealed class SchedulerOptions
+{
+    public const string SectionName = "Scheduler";
+
+    /// <summary>IANA timezone сервера для системных тиков (ClaudeAutoRecoveryTick и т.п.).</summary>
+    public string ServerTimezone { get; init; } = "Europe/Moscow";
+}

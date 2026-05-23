@@ -7,12 +7,12 @@ using FinanceBot.Domain.Commands.User;
 namespace FinanceBot.Application.Actors.User;
 
 /// <summary>
-/// Stage 21: команда /report [period]. periodsAgo: 0=current (default), 1=previous, N — назад.
+/// Команда /report [period]. periodsAgo: 0=current (default), 1=previous, N — назад.
 /// UserActor вычитывает текстовый отчёт через IReportBuilder и публикует через EventStream.
 /// </summary>
 public sealed partial class UserActor
 {
-    partial void WireStage21()
+    partial void WireReports()
     {
         Command<RequestReport>(OnRequestReport);
         Command<ReportReady>(OnReportReady);

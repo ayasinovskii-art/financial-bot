@@ -13,13 +13,15 @@ namespace FinanceBot.Application.Actors.Categorizer;
 /// при miss — делегирование в <see cref="ClaudeConsultantActor"/> (Stage 12).
 /// На <see cref="ClaudeUnavailableReply"/> возвращает Other + needsReview=true (fallback).
 /// </summary>
-public sealed class CategorizerActor : ReceiveActor
+public sealed class CategorizerActor : ReceiveActor, IWithTimers
 {
     private static readonly TimeSpan AskTimeout = TimeSpan.FromSeconds(35);
 
     private readonly ICategoryRules _rules;
     private readonly ILoggingAdapter _log;
     private readonly Dictionary<Guid, PendingRequest> _pending = new();
+
+    public ITimerScheduler Timers { get; set; } = null!;
 
     public CategorizerActor(ICategoryRules rules)
     {
@@ -29,6 +31,7 @@ public sealed class CategorizerActor : ReceiveActor
         Receive<CategorizeRequest>(HandleRequest);
         Receive<ClaudeOkReply>(HandleClaudeOk);
         Receive<ClaudeUnavailableReply>(HandleClaudeUnavailable);
+        Receive<ClaudeDeadline>(HandleDeadline);
     }
 
     private void HandleRequest(CategorizeRequest req)
@@ -51,11 +54,12 @@ public sealed class CategorizerActor : ReceiveActor
 
         var corr = Guid.NewGuid();
         _pending[corr] = new PendingRequest(req, Sender);
+        Timers.StartSingleTimer(TimerKey(corr), new ClaudeDeadline(corr), AskTimeout);
 
         var prompt = req.NormalizedDescription.Value;
         var claudeReq = new ClaudeRequest(
             UseCase: ClaudeUseCase.Categorization,
-            SystemPrompt: FinanceBot.Application.Actors.Categorizer.CategorizerPrompts.CategorizationSystem,
+            SystemPrompt: CategorizerPrompts.CategorizationSystem,
             UserPrompt: prompt,
             MaxTokens: 16,
             CorrelationId: corr);
@@ -68,6 +72,7 @@ public sealed class CategorizerActor : ReceiveActor
         {
             return;
         }
+        Timers.Cancel(TimerKey(reply.CorrelationId));
 
         var raw = (reply.Content ?? string.Empty).Trim().Trim('"', '`', '.', '\'');
         if (CategoryExtensions.TryParse(raw, out var category))
@@ -89,15 +94,29 @@ public sealed class CategorizerActor : ReceiveActor
         {
             return;
         }
+        Timers.Cancel(TimerKey(reply.CorrelationId));
         p.Sender.Tell(new CategorizeResponse(p.Request.CorrelationId, p.Request.UserId, p.Request.ExpenseId,
             Category.Other, ExpenseSource.Fallback, true));
     }
+
+    private void HandleDeadline(ClaudeDeadline d)
+    {
+        if (!_pending.Remove(d.CorrelationId, out var p))
+        {
+            return;
+        }
+        _log.Warning("Claude did not respond within {Timeout} for corr={Corr}; fallback Other.", AskTimeout, d.CorrelationId);
+        p.Sender.Tell(new CategorizeResponse(p.Request.CorrelationId, p.Request.UserId, p.Request.ExpenseId,
+            Category.Other, ExpenseSource.Fallback, true));
+    }
+
+    private static string TimerKey(Guid corr) => $"claude-deadline-{corr:N}";
 
     public static Props CreateProps(ICategoryRules rules) => Props.Create(() => new CategorizerActor(rules));
 
     private sealed record PendingRequest(CategorizeRequest Request, IActorRef Sender);
 
-    private static readonly TimeSpan _ = AskTimeout;
+    private sealed record ClaudeDeadline(Guid CorrelationId);
 }
 
 internal static class CategorizerPrompts

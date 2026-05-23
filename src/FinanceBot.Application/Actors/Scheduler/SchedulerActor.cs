@@ -1,12 +1,14 @@
 using Akka.Actor;
 using Akka.Event;
 using Akka.Hosting;
+using FinanceBot.Application.Actors.Claude;
 using FinanceBot.Application.Actors.Common;
 using FinanceBot.Application.Configuration;
 using FinanceBot.Application.Projections;
 using FinanceBot.Application.Scheduling;
 using FinanceBot.Domain.Events.Scheduling;
 using FinanceBot.Domain.ValueObjects;
+using Microsoft.Extensions.Options;
 
 namespace FinanceBot.Application.Actors.Scheduler;
 
@@ -26,22 +28,35 @@ public sealed class SchedulerActor : ReceiveActor, IWithTimers
     private readonly ISystemHeartbeatWriter _heartbeatWriter;
     private readonly IUserDirectory _directory;
     private readonly IUserScheduleResolver _resolver;
+    private readonly TimeZoneInfo _serverTimezone;
     private readonly ILoggingAdapter _log;
 
     private DateTimeOffset _lastCheckAt;
     private bool _startupCheckDone;
+    private bool _tickInFlight;
 
     public ITimerScheduler Timers { get; set; } = null!;
 
     public SchedulerActor(
         ISystemHeartbeatWriter heartbeatWriter,
         IUserDirectory directory,
-        IUserScheduleResolver resolver)
+        IUserScheduleResolver resolver,
+        IOptions<SchedulerOptions>? options = null)
     {
         _heartbeatWriter = heartbeatWriter;
         _directory = directory;
         _resolver = resolver;
         _log = Context.GetLogger();
+        var tzId = options?.Value.ServerTimezone ?? "Europe/Moscow";
+        try
+        {
+            _serverTimezone = TimeZoneInfo.FindSystemTimeZoneById(tzId);
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            _log.Warning("Scheduler:ServerTimezone='{Tz}' not found; falling back to TimeZoneInfo.Local.", tzId);
+            _serverTimezone = TimeZoneInfo.Local;
+        }
 
         Receive<Ping>(_ => Sender.Tell(new Pong(Self.Path.ToStringWithoutAddress())));
         Receive<SystemTick>(tick => OnSystemTick(tick));
@@ -69,6 +84,13 @@ public sealed class SchedulerActor : ReceiveActor, IWithTimers
         _ = tick;
         _ = WriteHeartbeatAsync(now);
 
+        if (_tickInFlight)
+        {
+            _log.Debug("Previous tick check still running; skipping at {Now}.", now);
+            return;
+        }
+
+        _tickInFlight = true;
         if (!_startupCheckDone)
         {
             _ = RunStartupCheckAsync(now);
@@ -165,16 +187,16 @@ public sealed class SchedulerActor : ReceiveActor, IWithTimers
     private void DispatchClaudeAutoRecoveryIfDue(ActorRegistry registry, DateTimeOffset from, DateTimeOffset to)
     {
         if (!ServerTimeWindow.ContainsLocalTimeOfDay(from, to,
-            ClaudeAutoRecoveryHour, minute: 0, TimeZoneInfo.Local))
+            ClaudeAutoRecoveryHour, minute: 0, _serverTimezone))
         {
             return;
         }
-        if (!registry.TryGet<FinanceBot.Application.Actors.Claude.ClaudeConsultantSingletonMarker>(out var claude))
+        if (!registry.TryGet<ClaudeConsultantSingletonMarker>(out var claude))
         {
             return;
         }
         _log.Info("ClaudeAutoRecoveryTick fired (server 20:00) → ResetUnavailable.");
-        claude.Tell(new FinanceBot.Application.Actors.Claude.ResetUnavailable());
+        claude.Tell(new ResetUnavailable());
     }
 
     /// <summary>Час локального времени сервера, когда шлём ClaudeAutoRecoveryTick (default 20).</summary>
@@ -284,17 +306,25 @@ public sealed class SchedulerActor : ReceiveActor, IWithTimers
         return items;
     }
 
-    private void OnTickCheckCompleted(TickCheckCompleted msg) => _lastCheckAt = msg.At;
+    private void OnTickCheckCompleted(TickCheckCompleted msg)
+    {
+        _lastCheckAt = msg.At;
+        _tickInFlight = false;
+    }
 
     private void OnStartupCheckCompleted(StartupCheckCompleted msg)
     {
         _startupCheckDone = true;
         _lastCheckAt = msg.At;
+        _tickInFlight = false;
     }
 
     public static Props CreateProps(
-        ISystemHeartbeatWriter writer, IUserDirectory directory, IUserScheduleResolver resolver)
-        => Props.Create(() => new SchedulerActor(writer, directory, resolver));
+        ISystemHeartbeatWriter writer,
+        IUserDirectory directory,
+        IUserScheduleResolver resolver,
+        IOptions<SchedulerOptions>? options = null)
+        => Props.Create(() => new SchedulerActor(writer, directory, resolver, options));
 
     private sealed record SystemTick;
     private sealed record TickCheckCompleted(DateTimeOffset At);

@@ -19,6 +19,8 @@ public sealed class ClaudeConsultantActor : ReceiveActor
     private readonly ClaudeConsultantOptions _options;
     private readonly ILoggingAdapter _log;
     private readonly SemaphoreSlim _concurrency;
+    private readonly int _maxQueueDepth;
+    private int _inFlight;
 
     private bool _available = true;
     private DateTimeOffset _unavailableUntil = DateTimeOffset.MinValue;
@@ -30,6 +32,8 @@ public sealed class ClaudeConsultantActor : ReceiveActor
         _options = options.Value;
         _log = Context.GetLogger();
         _concurrency = new SemaphoreSlim(_options.ConcurrencyLimit, _options.ConcurrencyLimit);
+        // Back-pressure cap: одновременно «принято к обработке» (в работе + в очереди семафора).
+        _maxQueueDepth = _options.ConcurrencyLimit * 4;
 
         Receive<Ping>(_ => Sender.Tell(new Pong(Self.Path.ToStringWithoutAddress())));
 
@@ -50,8 +54,17 @@ public sealed class ClaudeConsultantActor : ReceiveActor
             return;
         }
 
-        var request = msg.Request;
-        _ = ExecuteAsync(request, sender);
+        if (_inFlight >= _maxQueueDepth)
+        {
+            _log.Warning("ClaudeConsultantActor overloaded ({InFlight}/{Cap}); rejecting corr={Corr}.",
+                _inFlight, _maxQueueDepth, msg.Request.CorrelationId);
+            sender.Tell(new ClaudeUnavailableReply(
+                msg.Request.CorrelationId, ClaudeUnavailabilityReason.Overloaded, now.AddSeconds(30)));
+            return;
+        }
+
+        _inFlight++;
+        _ = ExecuteAsync(msg.Request, sender);
     }
 
     private async Task ExecuteAsync(ClaudeRequest request, IActorRef sender)
@@ -71,6 +84,10 @@ public sealed class ClaudeConsultantActor : ReceiveActor
 
     private void HandleInternalResponse(InternalResponse msg)
     {
+        if (_inFlight > 0)
+        {
+            _inFlight--;
+        }
         if (msg.Response.IsSuccess)
         {
             if (!_available)

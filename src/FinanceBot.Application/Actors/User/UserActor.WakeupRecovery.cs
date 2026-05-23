@@ -6,7 +6,7 @@ using FinanceBot.Domain.Events.Wakeup;
 namespace FinanceBot.Application.Actors.User;
 
 /// <summary>
-/// Stage 18: обработка WakeupCheck при детекте простоя SchedulerActor'ом.
+/// Обработка WakeupCheck при детекте простоя SchedulerActor'ом.
 /// Шлёт пользователю текст с пропущенными тиками; persist WakeupNotificationSent.
 /// Дубликаты по тому же downtimeFrom отсекаем сравнением с last persisted событием.
 /// </summary>
@@ -14,7 +14,7 @@ public sealed partial class UserActor
 {
     private DateTimeOffset? _lastWakeupDowntimeFrom;
 
-    partial void WireStage18()
+    partial void WireWakeupRecovery()
     {
         Recover<WakeupNotificationSent>(evt =>
         {

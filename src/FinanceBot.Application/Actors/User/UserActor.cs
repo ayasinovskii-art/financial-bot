@@ -19,18 +19,22 @@ namespace FinanceBot.Application.Actors.User;
 
 /// <summary>
 /// Per-user persistent actor. PersistenceId = "user-{userId:N}".
-/// Хранит регистрационные данные, settings, и текущий бюджетный период (Stage 8+).
-/// FSM-расширение Stage 17 (вечерний опрос) и Stage 18 (wakeup) — в partial-файлах.
+/// Ядро (регистрация, settings, доходы/расходы, категоризация, savings) — здесь.
+/// Фиче-расширения: EveningSurvey (FSM вечернего опроса), WakeupRecovery (детект простоя),
+/// Advice, Charts, Reports — в одноимённых partial-файлах.
 /// </summary>
-public sealed partial class UserActor : ReceivePersistentActor
+public sealed partial class UserActor : ReceivePersistentActor, IWithTimers
 {
     private const int SnapshotEvery = 100;
+    private static readonly TimeSpan CategorizationDeadlineDelay = TimeSpan.FromSeconds(45);
     private static readonly ICategoryBucketMap BucketMap = new DefaultCategoryBucketMap();
 
     private readonly Guid _userId;
     private readonly ILoggingAdapter _log;
     private UserState _state;
     private long _eventsSinceSnapshot;
+
+    public ITimerScheduler Timers { get; set; } = null!;
 
     public override string PersistenceId { get; }
 
@@ -67,6 +71,7 @@ public sealed partial class UserActor : ReceivePersistentActor
         Command<ReportIncome>(HandleReportIncome);
         Command<ReportExpense>(HandleReportExpense);
         Command<CategorizeResponse>(HandleCategorizeResponse);
+        Command<CategorizationDeadline>(HandleCategorizationDeadline);
         Command<CorrectExpenseCategory>(HandleCorrectExpenseCategory);
         Command<GetNeedsReviewExpenses>(HandleGetNeedsReview);
         Command<ConfirmSavings>(HandleConfirmSavings);
@@ -76,20 +81,20 @@ public sealed partial class UserActor : ReceivePersistentActor
         Command<SaveSnapshotSuccess>(_ => { });
         Command<SaveSnapshotFailure>(failure => _log.Error(failure.Cause, "User snapshot save failed."));
 
-        WireStage17();
-        WireStage18();
-        WireStage19();
-        WireStage20();
-        WireStage21();
+        WireEveningSurvey();
+        WireWakeupRecovery();
+        WireAdvice();
+        WireCharts();
+        WireReports();
 
         CommandAny(msg => _log.Debug("UserActor[{UserId}] received unhandled {MessageType}", _userId, msg.GetType().Name));
     }
 
-    partial void WireStage17();
-    partial void WireStage18();
-    partial void WireStage19();
-    partial void WireStage20();
-    partial void WireStage21();
+    partial void WireEveningSurvey();
+    partial void WireWakeupRecovery();
+    partial void WireAdvice();
+    partial void WireCharts();
+    partial void WireReports();
 
     private void HandleRegister(RegisterUser cmd)
     {
@@ -298,7 +303,7 @@ public sealed partial class UserActor : ReceivePersistentActor
 
             var normalized = NormalizedDescription.FromRaw(persisted.Description);
 
-            // Stage 11: сначала memory.
+            // Сначала memory.
             if (!normalized.IsEmpty
                 && _state.CategoryMemory.TryGetValue(normalized.Value, out var memCategory))
             {
@@ -314,9 +319,37 @@ public sealed partial class UserActor : ReceivePersistentActor
                 return;
             }
 
+            Timers.StartSingleTimer(CategorizationTimerKey(expenseId),
+                new CategorizationDeadline(expenseId), CategorizationDeadlineDelay);
             categorizer.Tell(new CategorizeRequest(Guid.NewGuid(), _userId, expenseId, normalized));
         });
     }
+
+    private void HandleCategorizationDeadline(CategorizationDeadline d)
+    {
+        if (!_pendingCategorizationSenders.Remove(d.ExpenseId, out var pending))
+        {
+            return;
+        }
+        _log.Warning("Categorization deadline reached for expense {ExpenseId}; replying fallback.", d.ExpenseId);
+        if (_state.ActivePeriod is { } period)
+        {
+            var bucket = BucketMap.Map(Category.Other);
+            pending.Sender.Tell(new ExpenseAccepted(
+                _userId, d.ExpenseId, period.PeriodId, pending.Amount,
+                Category.Other, bucket,
+                period.SpentEssentials, period.SpentFun, period.SpentDeposit,
+                period.AllocationEssentials, period.AllocationFun, period.AllocationDeposit));
+        }
+        else
+        {
+            pending.Sender.Tell(new ExpenseRejected(_userId, "Категоризация не завершилась вовремя."));
+        }
+    }
+
+    private static string CategorizationTimerKey(Guid expenseId) => $"cat-deadline-{expenseId:N}";
+
+    private sealed record CategorizationDeadline(Guid ExpenseId);
 
     private void HandleCategorizeResponse(CategorizeResponse resp)
     {
@@ -353,6 +386,7 @@ public sealed partial class UserActor : ReceivePersistentActor
             ApplyEvent(persisted);
             MaybeSnapshot();
 
+            Timers.Cancel(CategorizationTimerKey(expenseId));
             if (!_pendingCategorizationSenders.Remove(expenseId, out var pending) || _state.ActivePeriod is null)
             {
                 return;
@@ -477,7 +511,7 @@ public sealed partial class UserActor : ReceivePersistentActor
 
     private static string BuildClosedSummaryJson(ActivePeriod p)
     {
-        // Лёгкая сериализация по необходимым полям. На Stage 21 расширим через /report.
+        // Лёгкая сериализация по необходимым полям.
         var doc = new
         {
             periodId = p.PeriodId,
@@ -547,7 +581,7 @@ public sealed record ActivePeriod(
     IReadOnlyDictionary<Guid, NormalizedDescription> PendingDescriptions,
     IReadOnlyList<NeedsReviewExpense> NeedsReviewExpenses);
 
-/// <summary>Запись о трате, требующей ручной категоризации (Stage 11).</summary>
+/// <summary>Запись о трате, требующей ручной категоризации.</summary>
 public sealed record NeedsReviewExpense(
     Guid ExpenseId,
     decimal Amount,

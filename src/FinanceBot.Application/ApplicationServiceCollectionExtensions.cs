@@ -4,14 +4,21 @@ using Akka.Cluster.Tools.Singleton;
 using Akka.Hosting;
 using Akka.Remote.Hosting;
 using FinanceBot.Application.Actors.AccessControl;
+using FinanceBot.Application.Actors.Advisor;
+using FinanceBot.Application.Actors.Categorizer;
+using FinanceBot.Application.Actors.Charts;
+using FinanceBot.Application.Actors.Claude;
 using FinanceBot.Application.Actors.Scheduler;
 using FinanceBot.Application.Actors.Telegram;
+using FinanceBot.Application.Actors.Telegram.Commands;
+using FinanceBot.Application.Actors.Telegram.Commands.Handlers;
 using FinanceBot.Application.Actors.User;
 using FinanceBot.Application.Actors.UserPlannedExpenses;
 using FinanceBot.Application.Actors.UserTemplates;
 using FinanceBot.Application.Configuration;
 using FinanceBot.Application.Projections;
 using FinanceBot.Application.Scheduling;
+using FinanceBot.Domain.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -38,6 +45,14 @@ public static class ApplicationServiceCollectionExtensions
             .Bind(configuration.GetSection(AuthOptions.SectionName))
             .Validate(o => o.AdminUserIds.Length > 0, "Auth:AdminUserIds must not be empty.")
             .ValidateOnStart();
+
+        services.AddOptions<UserDefaultsOptions>()
+            .Bind(configuration.GetSection(UserDefaultsOptions.SectionName));
+
+        RegisterTelegramCommandHandlers(services);
+
+        services.AddOptions<SchedulerOptions>()
+            .Bind(configuration.GetSection(SchedulerOptions.SectionName));
 
         var akkaOptions = configuration
             .GetSection(AkkaOptions.SectionName)
@@ -115,17 +130,18 @@ public static class ApplicationServiceCollectionExtensions
             singletonName: "scheduler",
             propsFactory: (_, _, resolver) =>
                 SchedulerActor.CreateProps(
-                    resolver.GetService<FinanceBot.Application.Projections.ISystemHeartbeatWriter>(),
+                    resolver.GetService<ISystemHeartbeatWriter>(),
                     resolver.GetService<IUserDirectory>(),
-                    resolver.GetService<IUserScheduleResolver>()),
+                    resolver.GetService<IUserScheduleResolver>(),
+                    resolver.GetService<IOptions<SchedulerOptions>>()),
             options: new ClusterSingletonOptions { Role = null });
 
-        builder.WithSingleton<FinanceBot.Application.Actors.Claude.ClaudeConsultantSingletonMarker>(
+        builder.WithSingleton<ClaudeConsultantSingletonMarker>(
             singletonName: "claude-consultant",
             propsFactory: (_, _, resolver) =>
-                FinanceBot.Application.Actors.Claude.ClaudeConsultantActor.CreateProps(
-                    resolver.GetService<FinanceBot.Domain.Services.IClaudeClient>(),
-                    resolver.GetService<IOptions<FinanceBot.Application.Actors.Claude.ClaudeConsultantOptions>>()),
+                ClaudeConsultantActor.CreateProps(
+                    resolver.GetService<IClaudeClient>(),
+                    resolver.GetService<IOptions<ClaudeConsultantOptions>>()),
             options: new ClusterSingletonOptions { Role = null });
 
         builder.WithSingleton<UsersListProjectionMarker>(
@@ -166,35 +182,62 @@ public static class ApplicationServiceCollectionExtensions
                 Akka.Actor.Props.Create(() => new ExpenseProjection(
                     resolver.GetService<IProjectionOffsetStore>(),
                     resolver.GetService<IExpenseReadModelWriter>(),
-                    resolver.GetService<FinanceBot.Domain.Services.ICategoryBucketMap>())),
+                    resolver.GetService<ICategoryBucketMap>())),
             options: new ClusterSingletonOptions { Role = null });
+    }
+
+    private static void RegisterTelegramCommandHandlers(IServiceCollection services)
+    {
+        services.AddSingleton<ITelegramCommandHandler, StartHandler>();
+        services.AddSingleton<ITelegramCommandHandler, HelpHandler>();
+        services.AddSingleton<ITelegramCommandHandler, WhoAmIHandler>();
+        services.AddSingleton<ITelegramCommandHandler, CancelHandler>();
+        services.AddSingleton<ITelegramCommandHandler, AddUserHandler>();
+        services.AddSingleton<ITelegramCommandHandler, RemoveUserHandler>();
+        services.AddSingleton<ITelegramCommandHandler, ListUsersHandler>();
+        services.AddSingleton<ITelegramCommandHandler, SettingsHandler>();
+        services.AddSingleton<ITelegramCommandHandler, IncomeHandler>();
+        services.AddSingleton<ITelegramCommandHandler, ExpenseHandler>();
+        services.AddSingleton<ITelegramCommandHandler, ExpenseDayHandler>();
+        services.AddSingleton<ITelegramCommandHandler, CorrectHandler>();
+        services.AddSingleton<ITelegramCommandHandler, TemplateHandler>();
+        services.AddSingleton<ITelegramCommandHandler, PlanHandler>();
+        services.AddSingleton<ITelegramCommandHandler, SavingsHandler>();
+        services.AddSingleton<ITelegramCommandHandler, AdviceHandler>();
+        services.AddSingleton<ITelegramCommandHandler, ChartHandler>();
+        services.AddSingleton<ITelegramCommandHandler, ReportHandler>();
+
+        services.AddSingleton<ITelegramCallbackHandler, CorrectionCallbackHandler>();
     }
 
     private static void ConfigurePerNodeServices(AkkaConfigurationBuilder builder)
     {
         builder.WithActors((system, registry, resolver) =>
         {
-            var gateway = system.ActorOf(TelegramGatewayActor.CreateProps(), "telegram-gateway");
+            var gateway = system.ActorOf(
+                TelegramGatewayActor.CreateProps(
+                    resolver.GetService<IOptions<UserDefaultsOptions>>(),
+                    resolver.GetService<IEnumerable<ITelegramCommandHandler>>(),
+                    resolver.GetService<IEnumerable<ITelegramCallbackHandler>>()),
+                "telegram-gateway");
             registry.Register<TelegramGatewayActor>(gateway);
 
             var categorizer = system.ActorOf(
-                FinanceBot.Application.Actors.Categorizer.CategorizerActor.CreateProps(
-                    resolver.GetService<FinanceBot.Domain.Services.ICategoryRules>()),
+                CategorizerActor.CreateProps(resolver.GetService<ICategoryRules>()),
                 "categorizer");
-            registry.Register<FinanceBot.Application.Actors.Categorizer.CategorizerActorMarker>(categorizer);
+            registry.Register<CategorizerActorMarker>(categorizer);
 
             var advisor = system.ActorOf(
-                FinanceBot.Application.Actors.Advisor.AdvisorActor.CreateProps(
-                    resolver.GetService<FinanceBot.Application.Actors.Advisor.IAdvisorSnapshotReader>()),
+                AdvisorActor.CreateProps(resolver.GetService<IAdvisorSnapshotReader>()),
                 "advisor");
-            registry.Register<FinanceBot.Application.Actors.Advisor.AdvisorActorMarker>(advisor);
+            registry.Register<AdvisorActorMarker>(advisor);
 
             var chartPool = system.ActorOf(
-                FinanceBot.Application.Actors.Charts.ChartRendererActor.CreatePoolProps(
-                    resolver.GetService<FinanceBot.Application.Actors.Charts.IChartRenderer>(),
+                ChartRendererActor.CreatePoolProps(
+                    resolver.GetService<IChartRenderer>(),
                     workers: 4),
                 "chart-renderer-pool");
-            registry.Register<FinanceBot.Application.Actors.Charts.ChartRendererPoolMarker>(chartPool);
+            registry.Register<ChartRendererPoolMarker>(chartPool);
         });
     }
 }

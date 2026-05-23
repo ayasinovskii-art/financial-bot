@@ -39,40 +39,30 @@ public sealed class PeriodReadModelWriter(IDbContextFactory<AppDbContext> dbFact
         decimal allocationFun, decimal allocationDeposit, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var p = await db.Periods.FindAsync([periodId], ct);
-        if (p is null)
-        {
-            return;
-        }
-        p.TotalIncome = totalIncome;
-        p.AllocationEssentials = allocationEssentials;
-        p.AllocationFun = allocationFun;
-        p.AllocationDeposit = allocationDeposit;
-        await db.SaveChangesAsync(ct);
+        await db.Periods
+            .Where(p => p.PeriodId == periodId)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(p => p.TotalIncome, totalIncome)
+                .SetProperty(p => p.AllocationEssentials, allocationEssentials)
+                .SetProperty(p => p.AllocationFun, allocationFun)
+                .SetProperty(p => p.AllocationDeposit, allocationDeposit), ct);
     }
 
     public async Task UpdateSavingsActualAsync(Guid periodId, decimal savingsActual, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var p = await db.Periods.FindAsync([periodId], ct);
-        if (p is null)
-        {
-            return;
-        }
-        p.SavingsActual = savingsActual;
-        await db.SaveChangesAsync(ct);
+        await db.Periods
+            .Where(p => p.PeriodId == periodId)
+            .ExecuteUpdateAsync(s => s.SetProperty(p => p.SavingsActual, savingsActual), ct);
     }
 
     public async Task CloseAsync(Guid periodId, DateOnly endDate, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var p = await db.Periods.FindAsync([periodId], ct);
-        if (p is null)
-        {
-            return;
-        }
-        p.EndDate = endDate;
-        p.Status = "closed";
-        await db.SaveChangesAsync(ct);
+        await db.Periods
+            .Where(p => p.PeriodId == periodId)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(p => p.EndDate, (DateOnly?)endDate)
+                .SetProperty(p => p.Status, "closed"), ct);
     }
 }

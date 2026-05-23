@@ -24,6 +24,13 @@ internal static class AkkaHoconBuilder
                     "FinanceBot.Domain.Events.IDomainEvent, FinanceBot.Domain" = event-tagger
                 }
             }
+            akka.persistence.query.journal.sql {
+                class = "Akka.Persistence.Query.Sql.SqlReadJournalProvider, Akka.Persistence.Query.Sql"
+                plugin-dispatcher = "akka.actor.default-dispatcher"
+                write-plugin = "akka.persistence.journal.postgresql"
+                refresh-interval = 1s
+                max-buffer-size = 100
+            }
             """);
 
         return ConfigurationFactory.ParseString(sb.ToString());

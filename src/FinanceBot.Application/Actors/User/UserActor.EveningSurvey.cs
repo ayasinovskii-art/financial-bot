@@ -18,7 +18,7 @@ using FinanceBot.Domain.ValueObjects;
 namespace FinanceBot.Application.Actors.User;
 
 /// <summary>
-/// Stage 17: вечерний опрос. FSM Idle ↔ AwaitingDailyExpenses через BecomeStacked + Stash.
+/// Вечерний опрос. FSM Idle ↔ AwaitingDailyExpenses через BecomeStacked + Stash.
 /// На EveningTickFired → запрос шаблонов/планов на сегодня → формирование вопроса → переход в FSM.
 /// На свободный текст пользователя (ReportExpense) → обработка + выход. На SilenceDeadlineFired
 /// и auto_confirm_on_silence — авто-фиксация шаблонов. На /cancel — выход без записи.
@@ -30,7 +30,7 @@ public sealed partial class UserActor
     private ICancelable? _silenceDeadlineHandle;
     private DateOnly _activeEveningDate;
 
-    partial void WireStage17()
+    partial void WireEveningSurvey()
     {
         Recover<EveningQuestionAsked>(_ => { /* no state change, marker only */ });
         Recover<RecurringExpenseAutoConfirmed>(_ => { /* informational */ });

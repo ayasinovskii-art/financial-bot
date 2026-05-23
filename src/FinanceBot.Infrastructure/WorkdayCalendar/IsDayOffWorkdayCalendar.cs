@@ -13,6 +13,7 @@ namespace FinanceBot.Infrastructure.WorkdayCalendar;
 public sealed class IsDayOffWorkdayCalendar : IWorkdayCalendar
 {
     private static readonly TimeSpan FutureCacheTtl = TimeSpan.FromDays(7);
+    private const int MaxCacheEntries = 4096;
 
     private readonly HttpClient _http;
     private readonly WorkdayCalendarOptions _options;
@@ -50,6 +51,7 @@ public sealed class IsDayOffWorkdayCalendar : IWorkdayCalendar
             var isWorkday = body == "0" || body == "2";
 
             _cache[date] = new CachedAnswer(isWorkday, DateTimeOffset.UtcNow);
+            EvictIfOversized();
             return isWorkday;
         }
         catch (Exception ex)
@@ -83,6 +85,24 @@ public sealed class IsDayOffWorkdayCalendar : IWorkdayCalendar
 
     private static bool Fallback(DateOnly date)
         => date.DayOfWeek != DayOfWeek.Saturday && date.DayOfWeek != DayOfWeek.Sunday;
+
+    private void EvictIfOversized()
+    {
+        if (_cache.Count <= MaxCacheEntries)
+        {
+            return;
+        }
+        // Эвикция «дальних» дат от сегодня — оставляем горячее окно ±1 год.
+        var today = DateOnly.FromDateTime(DateTimeOffset.UtcNow.UtcDateTime);
+        foreach (var key in _cache.Keys)
+        {
+            var diff = Math.Abs(key.DayNumber - today.DayNumber);
+            if (diff > 365)
+            {
+                _cache.TryRemove(key, out _);
+            }
+        }
+    }
 
     private sealed record CachedAnswer(bool IsWorkday, DateTimeOffset CachedAt)
     {

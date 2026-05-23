@@ -10,7 +10,7 @@ using FinanceBot.Domain.Events.Reports;
 namespace FinanceBot.Application.Actors.User;
 
 /// <summary>
-/// Stage 20: рендер графиков. На <see cref="RequestChart"/> читает данные из read-model
+/// Рендер графиков. На <see cref="RequestChart"/> читает данные из read-model
 /// через <see cref="IChartDataReader"/>, шлёт в <see cref="ChartRendererActor"/> pool (RoundRobin)
 /// и публикует PNG в Telegram через EventStream(OutgoingTelegramPhoto).
 /// </summary>
@@ -18,7 +18,7 @@ public sealed partial class UserActor
 {
     private readonly Dictionary<Guid, PendingChart> _pendingCharts = new();
 
-    partial void WireStage20()
+    partial void WireCharts()
     {
         Recover<ChartRequested>(_ => { /* informational */ });
         Recover<ChartGenerated>(_ => { /* informational */ });
@@ -151,7 +151,7 @@ public sealed partial class UserActor
     }
 
     /// <summary>
-    /// Stage 17 hook: при выходе из вечернего FSM автоматически отрисовать category-pie
+    /// Hook вечернего опроса: при выходе из вечернего FSM автоматически отрисовать category-pie
     /// и опубликовать его пользователю. Идёт через тот же pipeline, что и /chart category.
     /// Если pool или reader недоступны — silent skip (актуально для unit-тестов).
     /// </summary>
