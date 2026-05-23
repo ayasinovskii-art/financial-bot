@@ -7,24 +7,26 @@ using FinanceBot.Domain.Commands.User;
 namespace FinanceBot.Application.Actors.User;
 
 /// <summary>
-/// Команда /report [period]. periodsAgo: 0=current (default), 1=previous, N — назад.
-/// UserActor вычитывает текстовый отчёт через IReportBuilder и публикует через EventStream.
+/// Per-user child actor: сборка текстового отчёта через <see cref="IReportBuilder"/>.
+/// Stateless — нет persistence. Parent форвардит <see cref="EnrichedReportRequest"/> с TelegramId.
 /// </summary>
-public sealed partial class UserActor
+public sealed class UserReportActor : ReceiveActor
 {
-    partial void WireReports()
+    private readonly Guid _userId;
+    private readonly ILoggingAdapter _log;
+
+    public UserReportActor(Guid userId)
     {
-        Command<RequestReport>(OnRequestReport);
-        Command<ReportReady>(OnReportReady);
+        _userId = userId;
+        _log = Context.GetLogger();
+
+        Receive<EnrichedReportRequest>(OnRequest);
+        Receive<ReportReady>(OnReportReady);
     }
 
-    private void OnRequestReport(RequestReport cmd)
+    private void OnRequest(EnrichedReportRequest msg)
     {
-        if (!_state.IsRegistered || _state.TelegramId is not { } chatId)
-        {
-            return;
-        }
-        var periodsAgo = ParsePeriod(cmd.Period);
+        var periodsAgo = ParsePeriod(msg.Request.Period);
         IReportBuilder builder;
         try
         {
@@ -33,12 +35,13 @@ public sealed partial class UserActor
         catch (InvalidOperationException ex)
         {
             _log.Warning(ex, "ReportBuilder not registered.");
-            Context.System.EventStream.Publish(new OutgoingTelegramReply(chatId, "Сервис отчётов не доступен."));
+            Context.System.EventStream.Publish(new OutgoingTelegramReply(msg.TelegramId, "Сервис отчётов не доступен."));
             return;
         }
 
         var self = Self;
         var userId = _userId;
+        var chatId = msg.TelegramId;
         Task.Run(async () =>
         {
             try
@@ -57,15 +60,13 @@ public sealed partial class UserActor
     {
         if (msg.ErrorMessage is not null)
         {
-            _log.Warning("Report build failed: {Error}", msg.ErrorMessage);
+            _log.Warning("Report build failed: {0}", msg.ErrorMessage);
             Context.System.EventStream.Publish(new OutgoingTelegramReply(msg.ChatId, $"Не удалось собрать отчёт: {msg.ErrorMessage}"));
             return;
         }
-        var result = msg.ReportResult!;
-        Context.System.EventStream.Publish(new OutgoingTelegramReply(msg.ChatId, result.Text));
+        Context.System.EventStream.Publish(new OutgoingTelegramReply(msg.ChatId, msg.ReportResult!.Text));
     }
 
-    /// <summary>Парсинг "current"/"previous"/"N" в periodsAgo (0/1/N).</summary>
     private static int ParsePeriod(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return 0;
@@ -78,5 +79,9 @@ public sealed partial class UserActor
         };
     }
 
+    public static Props CreateProps(Guid userId) => Props.Create(() => new UserReportActor(userId));
+
     private sealed record ReportReady(long ChatId, ReportResult? ReportResult, string? ErrorMessage);
 }
+
+public sealed record EnrichedReportRequest(RequestReport Request, long TelegramId);

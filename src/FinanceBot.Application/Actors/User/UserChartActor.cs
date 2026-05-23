@@ -10,52 +10,80 @@ using FinanceBot.Domain.Events.Reports;
 namespace FinanceBot.Application.Actors.User;
 
 /// <summary>
-/// Рендер графиков. На <see cref="RequestChart"/> читает данные из read-model
-/// через <see cref="IChartDataReader"/>, шлёт в <see cref="ChartRendererActor"/> pool (RoundRobin)
-/// и публикует PNG в Telegram через EventStream(OutgoingTelegramPhoto).
+/// Per-user child actor: рендер графиков.
+/// <see cref="PersistenceId"/> = <c>user-{userId:N}-chart</c>.
+/// Recovers <see cref="ChartRequested"/>/<see cref="ChartGenerated"/> только как информационные
+/// (state не строится). Handlers идентичны логике из старого <c>UserActor.Charts.cs</c>.
 /// </summary>
-public sealed partial class UserActor
+public sealed class UserChartActor : ReceivePersistentActor
 {
-    private readonly Dictionary<Guid, PendingChart> _pendingCharts = new();
+    private readonly Guid _userId;
+    private readonly ILoggingAdapter _log;
+    private readonly Dictionary<Guid, PendingChart> _pending = new();
 
-    partial void WireCharts()
+    public override string PersistenceId { get; }
+
+    public UserChartActor(Guid userId)
     {
-        Recover<ChartRequested>(_ => { /* informational */ });
-        Recover<ChartGenerated>(_ => { /* informational */ });
+        _userId = userId;
+        _log = Context.GetLogger();
+        PersistenceId = $"user-{userId:N}-chart";
 
-        Command<RequestChart>(OnRequestChart);
+        Recover<ChartRequested>(_ => { });
+        Recover<ChartGenerated>(_ => { });
+
+        Command<EnrichedChartRequest>(OnRequest);
+        Command<EveningChartTrigger>(OnEveningTrigger);
         Command<ChartDataLoaded>(OnChartDataLoaded);
         Command<RenderChartResponse>(OnRenderChartResponse);
     }
 
-    private void OnRequestChart(RequestChart cmd)
+    private void OnRequest(EnrichedChartRequest msg)
     {
-        if (!_state.IsRegistered || _state.TelegramId is not { } chatId)
+        if (!TryParseChartType(msg.Request.ChartType, out var type))
         {
-            return;
-        }
-        if (!TryParseChartType(cmd.ChartType, out var type))
-        {
-            Context.System.EventStream.Publish(new OutgoingTelegramReply(chatId,
+            Context.System.EventStream.Publish(new OutgoingTelegramReply(msg.TelegramId,
                 "Неизвестный тип графика. Доступно: category, daily, buckets, savings."));
             return;
         }
 
         var corr = Guid.NewGuid();
-        _pendingCharts[corr] = new PendingChart(type, chatId, ServiceProviderHost.Resolve<IChartDataReader>(Context.System));
+        _pending[corr] = new PendingChart(type, msg.TelegramId, ServiceProviderHost.Resolve<IChartDataReader>(Context.System));
 
-        var evt = new ChartRequested(_userId, type, cmd.Params, DateTimeOffset.UtcNow);
-        Persist(evt, persisted =>
+        var evt = new ChartRequested(_userId, type, msg.Request.Params, DateTimeOffset.UtcNow);
+        Persist(evt, persisted => StartChartLoad(corr, persisted.ChartType));
+    }
+
+    /// <summary>
+    /// Триггер от <see cref="UserActor"/> EveningSurvey: после выхода из FSM
+    /// автоматически отрисовать category-pie. Silent skip если pool/reader недоступны.
+    /// </summary>
+    private void OnEveningTrigger(EveningChartTrigger trigger)
+    {
+        var registry = ActorRegistry.For(Context.System);
+        if (!registry.TryGet<ChartRendererPoolMarker>(out _))
         {
-            ApplyEvent(persisted);
-            MaybeSnapshot();
-            StartChartLoad(corr, persisted.ChartType);
-        });
+            return;
+        }
+        IChartDataReader reader;
+        try
+        {
+            reader = ServiceProviderHost.Resolve<IChartDataReader>(Context.System);
+        }
+        catch (InvalidOperationException)
+        {
+            return;
+        }
+
+        var corr = Guid.NewGuid();
+        _pending[corr] = new PendingChart(ChartType.CategoryPie, trigger.TelegramId, reader);
+        var evt = new ChartRequested(_userId, ChartType.CategoryPie, "evening-summary", DateTimeOffset.UtcNow);
+        Persist(evt, _ => StartChartLoad(corr, ChartType.CategoryPie));
     }
 
     private void StartChartLoad(Guid corr, ChartType type)
     {
-        if (!_pendingCharts.TryGetValue(corr, out var ctx))
+        if (!_pending.TryGetValue(corr, out var ctx))
         {
             return;
         }
@@ -78,13 +106,13 @@ public sealed partial class UserActor
 
     private void OnChartDataLoaded(ChartDataLoaded msg)
     {
-        if (!_pendingCharts.TryGetValue(msg.CorrelationId, out var ctx))
+        if (!_pending.TryGetValue(msg.CorrelationId, out var ctx))
         {
             return;
         }
         if (msg.Data is null)
         {
-            _pendingCharts.Remove(msg.CorrelationId);
+            _pending.Remove(msg.CorrelationId);
             Context.System.EventStream.Publish(new OutgoingTelegramReply(ctx.ChatId,
                 msg.ErrorMessage is null ? "Нет данных для графика." : $"Не удалось собрать данные: {msg.ErrorMessage}"));
             return;
@@ -93,7 +121,7 @@ public sealed partial class UserActor
         var registry = ActorRegistry.For(Context.System);
         if (!registry.TryGet<ChartRendererPoolMarker>(out var pool))
         {
-            _pendingCharts.Remove(msg.CorrelationId);
+            _pending.Remove(msg.CorrelationId);
             Context.System.EventStream.Publish(new OutgoingTelegramReply(ctx.ChatId, "Сервис рендера графиков не запущен."));
             return;
         }
@@ -102,7 +130,7 @@ public sealed partial class UserActor
 
     private void OnRenderChartResponse(RenderChartResponse resp)
     {
-        if (!_pendingCharts.Remove(resp.CorrelationId, out var ctx))
+        if (!_pending.Remove(resp.CorrelationId, out var ctx))
         {
             return;
         }
@@ -117,11 +145,7 @@ public sealed partial class UserActor
         Context.System.EventStream.Publish(new OutgoingTelegramPhoto(ctx.ChatId, resp.PngBytes, fileName, Caption: resp.Type.ToString()));
 
         var evt = new ChartGenerated(_userId, resp.Type, resp.PngBytes.LongLength, DateTimeOffset.UtcNow);
-        Persist(evt, persisted =>
-        {
-            ApplyEvent(persisted);
-            MaybeSnapshot();
-        });
+        Persist(evt, _ => { });
     }
 
     private static bool TryParseChartType(string? raw, out ChartType type)
@@ -150,56 +174,15 @@ public sealed partial class UserActor
         }
     }
 
-    /// <summary>
-    /// Hook вечернего опроса: при выходе из вечернего FSM автоматически отрисовать category-pie
-    /// и опубликовать его пользователю. Идёт через тот же pipeline, что и /chart category.
-    /// Если pool или reader недоступны — silent skip (актуально для unit-тестов).
-    /// </summary>
-    internal void TriggerEveningCategoryChart()
-    {
-        if (_state.TelegramId is not { } chatId)
-        {
-            return;
-        }
-        var registry = ActorRegistry.For(Context.System);
-        if (!registry.TryGet<ChartRendererPoolMarker>(out _))
-        {
-            return;
-        }
-        IChartDataReader reader;
-        try
-        {
-            reader = ServiceProviderHost.Resolve<IChartDataReader>(Context.System);
-        }
-        catch (InvalidOperationException)
-        {
-            return;
-        }
-
-        var corr = Guid.NewGuid();
-        _pendingCharts[corr] = new PendingChart(ChartType.CategoryPie, chatId, reader);
-        var evt = new ChartRequested(_userId, ChartType.CategoryPie, "evening-summary", DateTimeOffset.UtcNow);
-        Persist(evt, _ =>
-        {
-            MaybeSnapshot();
-            StartChartLoad(corr, ChartType.CategoryPie);
-        });
-    }
+    public static Props CreateProps(Guid userId) => Props.Create(() => new UserChartActor(userId));
 
     private sealed record PendingChart(ChartType Type, long ChatId, IChartDataReader Reader);
 
     private sealed record ChartDataLoaded(Guid CorrelationId, ChartType Type, ChartDataSet? Data, string? ErrorMessage);
 }
 
-/// <summary>
-/// Лёгкий хост для резолва singleton сервисов из ActorSystem extensions.
-/// </summary>
-internal static class ServiceProviderHost
-{
-    public static T Resolve<T>(Akka.Actor.ActorSystem system) where T : class
-    {
-        var svc = Akka.DependencyInjection.DependencyResolver.For(system)
-            .Resolver.GetService(typeof(T)) as T;
-        return svc ?? throw new InvalidOperationException($"Service {typeof(T).Name} is not registered.");
-    }
-}
+/// <summary>Обёртка над <see cref="RequestChart"/>: parent добавляет TelegramId.</summary>
+public sealed record EnrichedChartRequest(RequestChart Request, long TelegramId);
+
+/// <summary>Триггер от EveningSurvey на авто-отрисовку category-pie.</summary>
+public sealed record EveningChartTrigger(long TelegramId);

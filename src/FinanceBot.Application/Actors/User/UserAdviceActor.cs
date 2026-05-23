@@ -15,38 +15,44 @@ using FinanceBot.Domain.Services;
 namespace FinanceBot.Application.Actors.User;
 
 /// <summary>
-/// Advisor pipeline. На /advice или WeeklyAdvisorTickFired/MonthlyAdvisorTickFired —
-/// строим snapshot через AdvisorActor, отправляем prompt в ClaudeConsultantActor, отвечаем пользователю.
-/// При Unavailable + tick → persist AdviceParked, ждём ClaudeBecameAvailable на EventStream и повторяем.
-/// При Unavailable + /advice → fallback на локальный совет от AdvisorActor.
+/// Per-user child actor: advisor pipeline (Claude + локальный fallback).
+/// <see cref="PersistenceId"/> = <c>user-{userId:N}-advice</c>.
+/// На <see cref="RequestConsultation"/> / Weekly/Monthly тики строит snapshot через
+/// <see cref="AdvisorActor"/>, шлёт промпт в <see cref="ClaudeConsultantActor"/>.
+/// При Unavailable + tick → persist <see cref="AdviceParked"/>, ждёт
+/// <see cref="ClaudeBecameAvailable"/> на EventStream и повторяет.
+/// При Unavailable + /advice → fallback на локальный совет.
 /// </summary>
-public sealed partial class UserActor
+public sealed class UserAdviceActor : ReceivePersistentActor
 {
-    private static readonly TimeSpan AdvisorAskTimeout = TimeSpan.FromSeconds(5);
-
+    private readonly Guid _userId;
+    private readonly ILoggingAdapter _log;
     private readonly Dictionary<Guid, PendingAdvice> _pendingAdvice = new();
     private bool _adviceParkedAwaitingRecovery;
     private AdvisorTickType _parkedTickType;
 
-    partial void WireAdvice()
+    public override string PersistenceId { get; }
+
+    public UserAdviceActor(Guid userId)
     {
-        Recover<ConsultationRequested>(_ => { /* informational */ });
-        Recover<ConsultationAnswered>(_ => { /* informational */ });
+        _userId = userId;
+        _log = Context.GetLogger();
+        PersistenceId = $"user-{userId:N}-advice";
+
+        Recover<ConsultationRequested>(_ => { });
+        Recover<ConsultationAnswered>(_ => { });
         Recover<AdviceParked>(evt =>
         {
             _adviceParkedAwaitingRecovery = true;
             _parkedTickType = evt.TickType;
         });
-        Recover<AdviceResumedWithFreshContext>(_ =>
-        {
-            _adviceParkedAwaitingRecovery = false;
-        });
+        Recover<AdviceResumedWithFreshContext>(_ => _adviceParkedAwaitingRecovery = false);
 
         Context.System.EventStream.Subscribe(Self, typeof(ClaudeBecameAvailable));
 
-        Command<RequestConsultation>(OnRequestAdvice);
-        Command<WeeklyAdvisorTickFired>(OnWeeklyAdvisorTick);
-        Command<MonthlyAdvisorTickFired>(OnMonthlyAdvisorTick);
+        Command<EnrichedRequestConsultation>(OnRequestAdvice);
+        Command<EnrichedWeeklyAdvisorTick>(t => StartAdvicePipeline(AdvisorTickType.Weekly, t.TelegramId));
+        Command<EnrichedMonthlyAdvisorTick>(t => StartAdvicePipeline(AdvisorTickType.Monthly, t.TelegramId));
         Command<ClaudeBecameAvailable>(OnClaudeBecameAvailable);
 
         Command<BuildSnapshotResponse>(OnSnapshotResponse);
@@ -55,22 +61,11 @@ public sealed partial class UserActor
         Command<ClaudeUnavailableReply>(OnClaudeAdviceUnavailable);
     }
 
-    private void OnRequestAdvice(RequestConsultation cmd)
+    private void OnRequestAdvice(EnrichedRequestConsultation msg)
     {
-        if (!_state.IsRegistered)
-        {
-            ReplyOrIgnore("Сначала зарегистрируйся через /start.");
-            return;
-        }
-        var tick = ResolveTickType(cmd.Scope);
-        StartAdvicePipeline(tick, replyChatId: _state.TelegramId);
+        var tick = ResolveTickType(msg.Request.Scope);
+        StartAdvicePipeline(tick, msg.TelegramId);
     }
-
-    private void OnWeeklyAdvisorTick(WeeklyAdvisorTickFired _)
-        => StartAdvicePipeline(AdvisorTickType.Weekly, replyChatId: _state.TelegramId);
-
-    private void OnMonthlyAdvisorTick(MonthlyAdvisorTickFired _)
-        => StartAdvicePipeline(AdvisorTickType.Monthly, replyChatId: _state.TelegramId);
 
     private void OnClaudeBecameAvailable(ClaudeBecameAvailable _)
     {
@@ -80,12 +75,13 @@ public sealed partial class UserActor
         }
         var evt = new AdviceResumedWithFreshContext(_userId, _parkedTickType, DateTimeOffset.UtcNow);
         var tickType = _parkedTickType;
-        Persist(evt, persisted =>
+        Persist(evt, _ =>
         {
-            ApplyEvent(persisted);
-            MaybeSnapshot();
             _adviceParkedAwaitingRecovery = false;
-            StartAdvicePipeline(tickType, replyChatId: _state.TelegramId);
+            // На park'нутый tick reply-chat неизвестен — публикуем без явного TelegramId
+            // если кто-то подпишется через scheduler. Для надёжности этот путь нужно
+            // расширить хранением chatId в parked-state (TODO).
+            StartAdvicePipeline(tickType, replyChatId: null);
         });
     }
 
@@ -94,7 +90,7 @@ public sealed partial class UserActor
         var registry = ActorRegistry.For(Context.System);
         if (!registry.TryGet<AdvisorActorMarker>(out var advisor))
         {
-            _log.Warning("AdvisorActor not registered; skipping advice for {UserId}.", _userId);
+            _log.Warning("AdvisorActor not registered; skipping advice for {0}.", _userId);
             return;
         }
 
@@ -111,20 +107,19 @@ public sealed partial class UserActor
         }
         if (resp.Snapshot is null)
         {
-            _log.Warning("Snapshot build failed: {Error}", resp.ErrorMessage);
+            _log.Warning("Snapshot build failed: {0}", resp.ErrorMessage);
             _pendingAdvice.Remove(resp.CorrelationId);
             ReplyToChat(ctxItem.ReplyChatId, "Не удалось собрать данные для совета. Попробуй позже.");
             return;
         }
 
-        // Запоминаем snapshot — пригодится в случае Unavailable (fallback на local).
         _pendingAdvice[resp.CorrelationId] = ctxItem with { SnapshotForLocal = resp.Snapshot };
 
         var registry = ActorRegistry.For(Context.System);
         if (!registry.TryGet<ClaudeConsultantSingletonMarker>(out var claude))
         {
-            // Нет Claude — делаем локальный совет сразу.
-            FallbackToLocalAdvice(resp.CorrelationId, resp.Snapshot, ctxItem.TickType, ctxItem.ReplyChatId, persistAnswer: ctxItem.TickType == AdvisorTickType.OnDemand);
+            FallbackToLocalAdvice(resp.CorrelationId, resp.Snapshot, ctxItem.TickType, ctxItem.ReplyChatId,
+                persistAnswer: ctxItem.TickType == AdvisorTickType.OnDemand);
             return;
         }
 
@@ -132,11 +127,8 @@ public sealed partial class UserActor
         var requestedEvt = new ConsultationRequested(
             _userId, resp.CorrelationId, userPrompt, ctxItem.TickType, DateTimeOffset.UtcNow);
 
-        Persist(requestedEvt, persisted =>
+        Persist(requestedEvt, _ =>
         {
-            ApplyEvent(persisted);
-            MaybeSnapshot();
-
             var claudeReq = new ClaudeRequest(
                 UseCase: ClaudeUseCase.Advice,
                 SystemPrompt: AdviceSystemPrompts.AdviceSystem,
@@ -157,12 +149,7 @@ public sealed partial class UserActor
 
         var evt = new ConsultationAnswered(
             _userId, reply.CorrelationId, content, ConsultationSource.Claude, DateTimeOffset.UtcNow);
-        Persist(evt, persisted =>
-        {
-            ApplyEvent(persisted);
-            MaybeSnapshot();
-            ReplyToChat(ctxItem.ReplyChatId, "💡 " + persisted.Response);
-        });
+        Persist(evt, persisted => ReplyToChat(ctxItem.ReplyChatId, "💡 " + persisted.Response));
     }
 
     private void OnClaudeAdviceUnavailable(ClaudeUnavailableReply reply)
@@ -174,7 +161,6 @@ public sealed partial class UserActor
 
         if (ctxItem.TickType == AdvisorTickType.OnDemand)
         {
-            // /advice → fallback на локальный совет (требует snapshot, который у нас уже есть).
             if (ctxItem.SnapshotForLocal is { } snap)
             {
                 FallbackToLocalAdvice(reply.CorrelationId, snap, ctxItem.TickType, ctxItem.ReplyChatId, persistAnswer: true);
@@ -186,12 +172,9 @@ public sealed partial class UserActor
             return;
         }
 
-        // tick → park & ждём ClaudeBecameAvailable.
         var parked = new AdviceParked(_userId, ctxItem.TickType, DateTimeOffset.UtcNow);
         Persist(parked, persisted =>
         {
-            ApplyEvent(persisted);
-            MaybeSnapshot();
             _adviceParkedAwaitingRecovery = true;
             _parkedTickType = persisted.TickType;
         });
@@ -205,7 +188,6 @@ public sealed partial class UserActor
             ReplyToChat(replyChatId, "Локальный советник недоступен.");
             return;
         }
-        // Сохраняем context до получения ответа.
         _pendingAdvice[correlationId] = new PendingAdvice(tickType, replyChatId, snap)
         {
             ShouldPersistLocalAnswer = persistAnswer
@@ -229,12 +211,13 @@ public sealed partial class UserActor
 
         var evt = new ConsultationAnswered(
             _userId, resp.CorrelationId, resp.Text, ConsultationSource.LocalHeuristics, DateTimeOffset.UtcNow);
-        Persist(evt, persisted =>
-        {
-            ApplyEvent(persisted);
-            MaybeSnapshot();
-            ReplyToChat(ctxItem.ReplyChatId, text);
-        });
+        Persist(evt, _ => ReplyToChat(ctxItem.ReplyChatId, text));
+    }
+
+    private void ReplyToChat(long? chatId, string text)
+    {
+        if (chatId is not { } id) return;
+        Context.System.EventStream.Publish(new OutgoingTelegramReply(id, text));
     }
 
     private static AdvisorTickType ResolveTickType(string? scope)
@@ -251,19 +234,7 @@ public sealed partial class UserActor
         };
     }
 
-    private void ReplyOrIgnore(string text)
-    {
-        if (_state.TelegramId is { } chatId)
-        {
-            Context.System.EventStream.Publish(new OutgoingTelegramReply(chatId, text));
-        }
-    }
-
-    private void ReplyToChat(long? chatId, string text)
-    {
-        if (chatId is not { } id) return;
-        Context.System.EventStream.Publish(new OutgoingTelegramReply(id, text));
-    }
+    public static Props CreateProps(Guid userId) => Props.Create(() => new UserAdviceActor(userId));
 
     private sealed record PendingAdvice(
         AdvisorTickType TickType,
@@ -273,6 +244,10 @@ public sealed partial class UserActor
         public bool ShouldPersistLocalAnswer { get; init; }
     }
 }
+
+public sealed record EnrichedRequestConsultation(RequestConsultation Request, long TelegramId);
+public sealed record EnrichedWeeklyAdvisorTick(WeeklyAdvisorTickFired Tick, long TelegramId);
+public sealed record EnrichedMonthlyAdvisorTick(MonthlyAdvisorTickFired Tick, long TelegramId);
 
 internal static class AdviceSystemPrompts
 {
