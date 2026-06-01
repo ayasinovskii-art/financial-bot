@@ -58,6 +58,7 @@ public static class TelegramReplies
            /adduser <telegram_id>
            /removeuser <telegram_id>
            /listusers
+           /tokens — остаток rate-limit на Claude API ключе
            """;
 
     public static string WhoAmI(long telegramId)
