@@ -31,6 +31,11 @@ public sealed class UserAdviceActor : ReceivePersistentActor
     private bool _adviceParkedAwaitingRecovery;
     private AdvisorTickType _parkedTickType;
 
+    private static readonly TimeSpan ConversationTtl = TimeSpan.FromHours(1);
+    private const int MaxAdviceConversationTurns = 5;
+    private readonly List<AdviceConversationTurn> _conversation = new();
+    private DateTimeOffset _lastInteractionUtc = DateTimeOffset.MinValue;
+
     public override string PersistenceId { get; }
 
     public UserAdviceActor(Guid userId)
@@ -63,8 +68,23 @@ public sealed class UserAdviceActor : ReceivePersistentActor
 
     private void OnRequestAdvice(EnrichedRequestConsultation msg)
     {
+        if (string.Equals(msg.Request.Scope, "clear", StringComparison.OrdinalIgnoreCase))
+        {
+            _conversation.Clear();
+            _lastInteractionUtc = DateTimeOffset.MinValue;
+            return;
+        }
+
         var tick = ResolveTickType(msg.Request.Scope);
         var question = string.IsNullOrWhiteSpace(msg.Request.Prompt) ? null : msg.Request.Prompt;
+
+        if (tick == AdvisorTickType.OnDemand
+            && _conversation.Count > 0
+            && DateTimeOffset.UtcNow - _lastInteractionUtc > ConversationTtl)
+        {
+            _conversation.Clear();
+        }
+
         StartAdvicePipeline(tick, msg.TelegramId, question);
     }
 
@@ -124,7 +144,10 @@ public sealed class UserAdviceActor : ReceivePersistentActor
             return;
         }
 
-        var userPrompt = AdvicePromptBuilder.Build(resp.Snapshot, ctxItem.TickType, ctxItem.UserQuestion);
+        var history = ctxItem.TickType == AdvisorTickType.OnDemand && ctxItem.UserQuestion is not null
+            ? _conversation
+            : null;
+        var userPrompt = AdvicePromptBuilder.Build(resp.Snapshot, ctxItem.TickType, ctxItem.UserQuestion, history);
         var requestedEvt = new ConsultationRequested(
             _userId, resp.CorrelationId, userPrompt, ctxItem.TickType, DateTimeOffset.UtcNow);
 
@@ -150,7 +173,11 @@ public sealed class UserAdviceActor : ReceivePersistentActor
 
         var evt = new ConsultationAnswered(
             _userId, reply.CorrelationId, content, ConsultationSource.Claude, DateTimeOffset.UtcNow);
-        Persist(evt, persisted => ReplyToChat(ctxItem.ReplyChatId, "💡 " + persisted.Response));
+        Persist(evt, persisted =>
+        {
+            AppendAdviceConversationTurn(ctxItem, persisted.Response);
+            ReplyToChat(ctxItem.ReplyChatId, "💡 " + persisted.Response);
+        });
     }
 
     private void OnClaudeAdviceUnavailable(ClaudeUnavailableReply reply)
@@ -207,13 +234,32 @@ public sealed class UserAdviceActor : ReceivePersistentActor
 
         if (!ctxItem.ShouldPersistLocalAnswer)
         {
+            AppendAdviceConversationTurn(ctxItem, resp.Text);
             ReplyToChat(ctxItem.ReplyChatId, text);
             return;
         }
 
         var evt = new ConsultationAnswered(
             _userId, resp.CorrelationId, resp.Text, ConsultationSource.LocalHeuristics, DateTimeOffset.UtcNow);
-        Persist(evt, _ => ReplyToChat(ctxItem.ReplyChatId, text));
+        Persist(evt, persisted =>
+        {
+            AppendAdviceConversationTurn(ctxItem, persisted.Response);
+            ReplyToChat(ctxItem.ReplyChatId, text);
+        });
+    }
+
+    private void AppendAdviceConversationTurn(PendingAdvice ctxItem, string answer)
+    {
+        if (ctxItem.TickType != AdvisorTickType.OnDemand || ctxItem.UserQuestion is null)
+        {
+            return;
+        }
+        _conversation.Add(new AdviceConversationTurn(ctxItem.UserQuestion, answer));
+        if (_conversation.Count > MaxAdviceConversationTurns)
+        {
+            _conversation.RemoveRange(0, _conversation.Count - MaxAdviceConversationTurns);
+        }
+        _lastInteractionUtc = DateTimeOffset.UtcNow;
     }
 
     private void ReplyToChat(long? chatId, string text)
@@ -247,6 +293,8 @@ public sealed class UserAdviceActor : ReceivePersistentActor
         public bool ShouldPersistLocalAnswer { get; init; }
     }
 }
+
+public sealed record AdviceConversationTurn(string Question, string Answer);
 
 public sealed record EnrichedRequestConsultation(RequestConsultation Request, long TelegramId);
 public sealed record EnrichedWeeklyAdvisorTick(WeeklyAdvisorTickFired Tick, long TelegramId);

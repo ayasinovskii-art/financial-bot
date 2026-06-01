@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using FinanceBot.Application.Actors.User;
 using FinanceBot.Domain.Events.Advisor;
 
 namespace FinanceBot.Application.Actors.Advisor;
@@ -9,7 +10,11 @@ namespace FinanceBot.Application.Actors.Advisor;
 /// </summary>
 public static class AdvicePromptBuilder
 {
-    public static string Build(AdvisorSnapshot snap, AdvisorTickType tickType, string? userQuestion = null)
+    public static string Build(
+        AdvisorSnapshot snap,
+        AdvisorTickType tickType,
+        string? userQuestion = null,
+        IReadOnlyList<AdviceConversationTurn>? conversation = null)
     {
         var sb = new StringBuilder(1024);
         var scope = tickType switch
@@ -76,6 +81,17 @@ public static class AdvicePromptBuilder
             foreach (var e in snap.TopExpenses.Take(5))
             {
                 sb.AppendLine($"- {e.OccurredAt:yyyy-MM-dd} {e.Description}: {Fmt(e.Amount)} [{e.Category}].");
+            }
+        }
+
+        if (conversation is { Count: > 0 })
+        {
+            sb.AppendLine();
+            sb.AppendLine("Предыдущий диалог (для контекста встречных вопросов):");
+            foreach (var turn in conversation)
+            {
+                sb.AppendLine($"Пользователь: {turn.Question.Trim()}");
+                sb.AppendLine($"Ты: {turn.Answer.Trim()}");
             }
         }
 

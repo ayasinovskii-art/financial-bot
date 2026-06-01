@@ -44,7 +44,8 @@ public static class TelegramReplies
            /plan list / /plan remove <id>
 
            Советы и графики:
-           /advice [week|month]
+           /advice [week|month] [<вопрос>] — совет; без аргументов — общий, с текстом — встречный вопрос (контекст держится 1 час между запросами)
+           /advice clear — сбросить контекст диалога с советником
            /chart <category|daily|buckets|savings>
            /report [period]
            /savings <amount>

@@ -31,6 +31,7 @@ public sealed class AdviceHandler : ITelegramCommandHandler
         {
             "week" or "weekly" => "Готовлю еженедельный обзор…",
             "month" or "monthly" => "Готовлю ежемесячный обзор…",
+            "clear" => "Контекст советов очищен.",
             _ => "Готовлю совет…"
         });
     }
@@ -50,6 +51,7 @@ public sealed class AdviceHandler : ITelegramCommandHandler
         {
             "week" or "weekly" or "month" or "monthly" =>
                 (firstWord, string.IsNullOrWhiteSpace(rest) ? null : rest),
+            "clear" or "reset" => ("clear", null),
             _ => (null, trimmed)
         };
     }
