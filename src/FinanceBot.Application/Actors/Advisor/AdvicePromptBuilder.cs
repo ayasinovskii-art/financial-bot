@@ -9,7 +9,7 @@ namespace FinanceBot.Application.Actors.Advisor;
 /// </summary>
 public static class AdvicePromptBuilder
 {
-    public static string Build(AdvisorSnapshot snap, AdvisorTickType tickType)
+    public static string Build(AdvisorSnapshot snap, AdvisorTickType tickType, string? userQuestion = null)
     {
         var sb = new StringBuilder(1024);
         var scope = tickType switch
@@ -19,6 +19,16 @@ public static class AdvicePromptBuilder
             _ => "разовый запрос"
         };
         sb.AppendLine($"Контекст: {scope}.");
+
+        if (snap.Settings.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("Настройки пользователя:");
+            foreach (var kv in snap.Settings.OrderBy(k => k.Key, StringComparer.Ordinal))
+            {
+                sb.AppendLine($"- {kv.Key} = {kv.Value}");
+            }
+        }
 
         if (snap.CurrentPeriod is { } cur)
         {
@@ -69,8 +79,19 @@ public static class AdvicePromptBuilder
             }
         }
 
-        sb.AppendLine();
-        sb.AppendLine("Дай совет до 1500 символов, без markdown-таблиц, одним связным сообщением.");
+        if (!string.IsNullOrWhiteSpace(userQuestion))
+        {
+            sb.AppendLine();
+            sb.AppendLine("Вопрос пользователя:");
+            sb.AppendLine(userQuestion.Trim());
+            sb.AppendLine();
+            sb.AppendLine("Ответь именно на этот вопрос, опираясь на данные выше. Совет до 1500 символов, без markdown-таблиц, одним связным сообщением.");
+        }
+        else
+        {
+            sb.AppendLine();
+            sb.AppendLine("Дай совет до 1500 символов, без markdown-таблиц, одним связным сообщением.");
+        }
         return sb.ToString().TrimEnd();
     }
 

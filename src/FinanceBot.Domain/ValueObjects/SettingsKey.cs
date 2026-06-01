@@ -38,6 +38,22 @@ public static class SettingsKeyExtensions
         _ => throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown settings key.")
     };
 
+    /// <summary>Канонический строковый default per ТЗ §8.3 для отображения в /settings.</summary>
+    public static string DefaultWireValue(this SettingsKey key) => key switch
+    {
+        SettingsKey.Timezone => "UTC",
+        SettingsKey.EveningTime => "19:00",
+        SettingsKey.SalaryDays => "10,25",
+        SettingsKey.ShiftRule => "previous",
+        SettingsKey.SilenceDeadlineHours => "4",
+        SettingsKey.AutoConfirmRecurring => "false",
+        SettingsKey.AutoConfirmOnSilence => "false",
+        SettingsKey.PeriodType => "salary-cycle",
+        SettingsKey.Allocation => "50/25/25",
+        SettingsKey.BucketMapping => "(пусто)",
+        _ => throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown settings key.")
+    };
+
     public static bool TryFromWireName(string? wire, out SettingsKey key)
     {
         key = default;

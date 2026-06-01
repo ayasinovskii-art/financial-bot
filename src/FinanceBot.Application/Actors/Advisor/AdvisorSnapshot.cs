@@ -14,7 +14,8 @@ public sealed record AdvisorSnapshot(
     IReadOnlyList<CategorySnapshot> CurrentByCategory,
     IReadOnlyList<CategorySnapshot> PreviousByCategory,
     IReadOnlyList<TopExpense> TopExpenses,
-    int? DaysToEndOfPeriod);
+    int? DaysToEndOfPeriod,
+    IReadOnlyDictionary<string, string> Settings);
 
 public sealed record PeriodSnapshot(
     Guid PeriodId,

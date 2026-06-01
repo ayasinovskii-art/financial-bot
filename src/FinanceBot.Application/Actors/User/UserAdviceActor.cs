@@ -51,8 +51,8 @@ public sealed class UserAdviceActor : ReceivePersistentActor
         Context.System.EventStream.Subscribe(Self, typeof(ClaudeBecameAvailable));
 
         Command<EnrichedRequestConsultation>(OnRequestAdvice);
-        Command<EnrichedWeeklyAdvisorTick>(t => StartAdvicePipeline(AdvisorTickType.Weekly, t.TelegramId));
-        Command<EnrichedMonthlyAdvisorTick>(t => StartAdvicePipeline(AdvisorTickType.Monthly, t.TelegramId));
+        Command<EnrichedWeeklyAdvisorTick>(t => StartAdvicePipeline(AdvisorTickType.Weekly, t.TelegramId, userQuestion: null));
+        Command<EnrichedMonthlyAdvisorTick>(t => StartAdvicePipeline(AdvisorTickType.Monthly, t.TelegramId, userQuestion: null));
         Command<ClaudeBecameAvailable>(OnClaudeBecameAvailable);
 
         Command<BuildSnapshotResponse>(OnSnapshotResponse);
@@ -64,7 +64,8 @@ public sealed class UserAdviceActor : ReceivePersistentActor
     private void OnRequestAdvice(EnrichedRequestConsultation msg)
     {
         var tick = ResolveTickType(msg.Request.Scope);
-        StartAdvicePipeline(tick, msg.TelegramId);
+        var question = string.IsNullOrWhiteSpace(msg.Request.Prompt) ? null : msg.Request.Prompt;
+        StartAdvicePipeline(tick, msg.TelegramId, question);
     }
 
     private void OnClaudeBecameAvailable(ClaudeBecameAvailable _)
@@ -81,11 +82,11 @@ public sealed class UserAdviceActor : ReceivePersistentActor
             // На park'нутый tick reply-chat неизвестен — публикуем без явного TelegramId
             // если кто-то подпишется через scheduler. Для надёжности этот путь нужно
             // расширить хранением chatId в parked-state (TODO).
-            StartAdvicePipeline(tickType, replyChatId: null);
+            StartAdvicePipeline(tickType, replyChatId: null, userQuestion: null);
         });
     }
 
-    private void StartAdvicePipeline(AdvisorTickType tickType, long? replyChatId)
+    private void StartAdvicePipeline(AdvisorTickType tickType, long? replyChatId, string? userQuestion)
     {
         var registry = ActorRegistry.For(Context.System);
         if (!registry.TryGet<AdvisorActorMarker>(out var advisor))
@@ -95,7 +96,7 @@ public sealed class UserAdviceActor : ReceivePersistentActor
         }
 
         var corr = Guid.NewGuid();
-        _pendingAdvice[corr] = new PendingAdvice(tickType, replyChatId, SnapshotForLocal: null);
+        _pendingAdvice[corr] = new PendingAdvice(tickType, replyChatId, SnapshotForLocal: null, UserQuestion: userQuestion);
         advisor.Tell(new BuildSnapshotRequest(corr, _userId));
     }
 
@@ -123,7 +124,7 @@ public sealed class UserAdviceActor : ReceivePersistentActor
             return;
         }
 
-        var userPrompt = AdvicePromptBuilder.Build(resp.Snapshot, ctxItem.TickType);
+        var userPrompt = AdvicePromptBuilder.Build(resp.Snapshot, ctxItem.TickType, ctxItem.UserQuestion);
         var requestedEvt = new ConsultationRequested(
             _userId, resp.CorrelationId, userPrompt, ctxItem.TickType, DateTimeOffset.UtcNow);
 
@@ -188,7 +189,8 @@ public sealed class UserAdviceActor : ReceivePersistentActor
             ReplyToChat(replyChatId, "Локальный советник недоступен.");
             return;
         }
-        _pendingAdvice[correlationId] = new PendingAdvice(tickType, replyChatId, snap)
+        var userQuestion = _pendingAdvice.TryGetValue(correlationId, out var prev) ? prev.UserQuestion : null;
+        _pendingAdvice[correlationId] = new PendingAdvice(tickType, replyChatId, snap, userQuestion)
         {
             ShouldPersistLocalAnswer = persistAnswer
         };
@@ -239,7 +241,8 @@ public sealed class UserAdviceActor : ReceivePersistentActor
     private sealed record PendingAdvice(
         AdvisorTickType TickType,
         long? ReplyChatId,
-        AdvisorSnapshot? SnapshotForLocal)
+        AdvisorSnapshot? SnapshotForLocal,
+        string? UserQuestion = null)
     {
         public bool ShouldPersistLocalAnswer { get; init; }
     }

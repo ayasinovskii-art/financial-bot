@@ -85,9 +85,16 @@ public sealed class SettingsHandler : ITelegramCommandHandler
         {
             var wire = key.ToWireName();
             var value = snap.Settings.GetValueOrDefault(wire);
-            sb.Append("- ").Append(wire).Append(": ")
-              .Append(value is null ? "(default)" : value.ToString(CultureInfo.InvariantCulture))
-              .AppendLine();
+            sb.Append("- ").Append(wire).Append(": ");
+            if (value is null)
+            {
+                sb.Append(key.DefaultWireValue()).Append(" (default)");
+            }
+            else
+            {
+                sb.Append(value.ToString(CultureInfo.InvariantCulture));
+            }
+            sb.AppendLine();
         }
         return sb.ToString().TrimEnd();
     }

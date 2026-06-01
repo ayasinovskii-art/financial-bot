@@ -23,11 +23,35 @@ public sealed class AdviceHandler : ITelegramCommandHandler
         }
 
         var userId = UserIdFromTelegramId.Resolve(ctx.Update.TelegramId);
-        var scope = string.IsNullOrWhiteSpace(ctx.ArgumentLine) ? null : ctx.ArgumentLine.Trim();
+        var (scope, question) = ParseAdviceArguments(ctx.ArgumentLine);
         shard.Tell(new ShardEnvelope(userId.ToString("N"),
-            new RequestConsultation(userId, Prompt: string.Empty, Scope: scope)));
+            new RequestConsultation(userId, Prompt: question ?? string.Empty, Scope: scope)));
 
-        ctx.Reply(scope is null ? "Готовлю совет…" : $"Готовлю {scope}-обзор…");
+        ctx.Reply(scope switch
+        {
+            "week" or "weekly" => "Готовлю еженедельный обзор…",
+            "month" or "monthly" => "Готовлю ежемесячный обзор…",
+            _ => "Готовлю совет…"
+        });
+    }
+
+    internal static (string? Scope, string? Question) ParseAdviceArguments(string? argumentLine)
+    {
+        if (string.IsNullOrWhiteSpace(argumentLine))
+        {
+            return (null, null);
+        }
+        var trimmed = argumentLine.Trim();
+        var spaceIdx = trimmed.IndexOfAny([' ', '\t', '\n']);
+        var firstWord = (spaceIdx < 0 ? trimmed : trimmed[..spaceIdx]).ToLowerInvariant();
+        var rest = spaceIdx < 0 ? string.Empty : trimmed[(spaceIdx + 1)..].Trim();
+
+        return firstWord switch
+        {
+            "week" or "weekly" or "month" or "monthly" =>
+                (firstWord, string.IsNullOrWhiteSpace(rest) ? null : rest),
+            _ => (null, trimmed)
+        };
     }
 }
 

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using FinanceBot.Application.Actors.Advisor;
 using FinanceBot.Domain.Services;
 using FinanceBot.Domain.ValueObjects;
@@ -50,6 +51,8 @@ public sealed class AdvisorSnapshotReader(
 
         int? daysToEnd = ComputeDaysToEndOfPeriod(currentSnap, now);
 
+        var settings = await LoadSettingsAsync(db, userId, ct).ConfigureAwait(false);
+
         return new AdvisorSnapshot(
             UserId: userId,
             BuiltAt: now,
@@ -58,7 +61,53 @@ public sealed class AdvisorSnapshotReader(
             CurrentByCategory: currentByCategory,
             PreviousByCategory: previousByCategory,
             TopExpenses: topExpenses,
-            DaysToEndOfPeriod: daysToEnd);
+            DaysToEndOfPeriod: daysToEnd,
+            Settings: settings);
+    }
+
+    private static async Task<IReadOnlyDictionary<string, string>> LoadSettingsAsync(
+        AppDbContext db, Guid userId, CancellationToken ct)
+    {
+        var row = await db.Users
+            .AsNoTracking()
+            .Where(u => u.UserId == userId)
+            .Select(u => new { u.Timezone, u.SettingsJson })
+            .FirstOrDefaultAsync(ct).ConfigureAwait(false);
+
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (row is null)
+        {
+            return result;
+        }
+        if (!string.IsNullOrWhiteSpace(row.Timezone))
+        {
+            result["timezone"] = row.Timezone;
+        }
+        if (!string.IsNullOrWhiteSpace(row.SettingsJson) && row.SettingsJson != "{}")
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(row.SettingsJson);
+                if (doc.RootElement.ValueKind == JsonValueKind.Object)
+                {
+                    foreach (var prop in doc.RootElement.EnumerateObject())
+                    {
+                        var value = prop.Value.ValueKind switch
+                        {
+                            JsonValueKind.String => prop.Value.GetString() ?? string.Empty,
+                            JsonValueKind.Null => string.Empty,
+                            _ => prop.Value.GetRawText()
+                        };
+                        result[prop.Name] = value;
+                    }
+                }
+            }
+            catch (JsonException)
+            {
+                // settings_json corrupted — ignore, advisor работает и без них
+            }
+        }
+        return result;
     }
 
     private async Task<PeriodSnapshot> BuildPeriodSnapshotAsync(AppDbContext db, PeriodEntity p, CancellationToken ct)
