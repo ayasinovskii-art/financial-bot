@@ -80,12 +80,12 @@ public sealed class SettingsHandler : ITelegramCommandHandler
     private static string FormatSnapshot(UserSnapshot snap)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("Текущие настройки:");
+        sb.AppendLine("Текущие настройки (изменить: `/settings <key> <value>`):");
         foreach (var key in SettingsKeyExtensions.All)
         {
             var wire = key.ToWireName();
             var value = snap.Settings.GetValueOrDefault(wire);
-            sb.Append("- ").Append(wire).Append(": ");
+            sb.Append("• ").Append(wire).Append(" = ");
             if (value is null)
             {
                 sb.Append(key.DefaultWireValue()).Append(" (default)");
@@ -95,6 +95,17 @@ public sealed class SettingsHandler : ITelegramCommandHandler
                 sb.Append(value.ToString(CultureInfo.InvariantCulture));
             }
             sb.AppendLine();
+
+            var description = key.Description();
+            if (description.Length > 0)
+            {
+                sb.Append("   ").AppendLine(description);
+            }
+            var example = key.Example();
+            if (example.Length > 0)
+            {
+                sb.Append("   пример: `").Append(example).Append('`').AppendLine();
+            }
         }
         return sb.ToString().TrimEnd();
     }

@@ -14,7 +14,8 @@ public enum SettingsKey
     AutoConfirmOnSilence = 7,
     PeriodType = 8,
     Allocation = 9,
-    BucketMapping = 10
+    BucketMapping = 10,
+    SalaryAmount = 11
 }
 
 public static class SettingsKeyExtensions
@@ -35,6 +36,7 @@ public static class SettingsKeyExtensions
         SettingsKey.PeriodType => "period_type",
         SettingsKey.Allocation => "allocation",
         SettingsKey.BucketMapping => "bucket_mapping",
+        SettingsKey.SalaryAmount => "salary_amount",
         _ => throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown settings key.")
     };
 
@@ -51,7 +53,42 @@ public static class SettingsKeyExtensions
         SettingsKey.PeriodType => "salary-cycle",
         SettingsKey.Allocation => "50/25/25",
         SettingsKey.BucketMapping => "(пусто)",
+        SettingsKey.SalaryAmount => "(не задано)",
         _ => throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown settings key.")
+    };
+
+    /// <summary>Краткое описание ключа для отображения в /settings.</summary>
+    public static string Description(this SettingsKey key) => key switch
+    {
+        SettingsKey.Timezone => "IANA-таймзона пользователя; влияет на расписание тиков.",
+        SettingsKey.EveningTime => "Время вечернего тика напоминаний (HH:mm в таймзоне пользователя).",
+        SettingsKey.SalaryDays => "Дни месяца, в которые приходит зарплата/аванс (1..28).",
+        SettingsKey.ShiftRule => "Сдвиг тика, если salary_day выпал на выходной: previous|next|none.",
+        SettingsKey.SilenceDeadlineHours => "Сколько часов после вечернего тика ждать ответа (1..24).",
+        SettingsKey.AutoConfirmRecurring => "Авто-подтверждение повторяющихся плановых трат (true|false).",
+        SettingsKey.AutoConfirmOnSilence => "Авто-подтверждение, если пользователь промолчал в дедлайн (true|false).",
+        SettingsKey.PeriodType => "Тип бюджетного периода: salary-cycle | calendar-month.",
+        SettingsKey.Allocation => "Доли бюджета essentials/fun/deposit в процентах (сумма = 100).",
+        SettingsKey.BucketMapping => "Переопределение маппинга категория → бакет (поверх дефолта).",
+        SettingsKey.SalaryAmount => "Ожидаемая сумма зарплаты/аванса, параллельно salary_days. Используется advisor'ом для прогнозов.",
+        _ => string.Empty
+    };
+
+    /// <summary>Пример значения для подсказки в /settings.</summary>
+    public static string Example(this SettingsKey key) => key switch
+    {
+        SettingsKey.Timezone => "Europe/Moscow",
+        SettingsKey.EveningTime => "19:30",
+        SettingsKey.SalaryDays => "10,25",
+        SettingsKey.ShiftRule => "previous",
+        SettingsKey.SilenceDeadlineHours => "4",
+        SettingsKey.AutoConfirmRecurring => "true",
+        SettingsKey.AutoConfirmOnSilence => "false",
+        SettingsKey.PeriodType => "salary-cycle",
+        SettingsKey.Allocation => "50/25/25",
+        SettingsKey.BucketMapping => "DiningOut=Essentials,Subscriptions=Fun",
+        SettingsKey.SalaryAmount => "30000,80000",
+        _ => string.Empty
     };
 
     public static bool TryFromWireName(string? wire, out SettingsKey key)
@@ -93,6 +130,9 @@ public static class SettingsKeyExtensions
                 return true;
             case "bucket_mapping":
                 key = SettingsKey.BucketMapping;
+                return true;
+            case "salary_amount":
+                key = SettingsKey.SalaryAmount;
                 return true;
             default:
                 return false;

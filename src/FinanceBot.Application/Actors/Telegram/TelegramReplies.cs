@@ -88,7 +88,7 @@ public static class TelegramReplies
         => "Формат: `/settings <key> <value>` или `/settings reset [<key>]`. См. /help.";
 
     public static string SettingsUnknownKey(string raw)
-        => $"Неизвестный ключ настройки `{raw}`. Доступные ключи: timezone, evening_time, salary_days, shift_rule, silence_deadline_hours, auto_confirm_recurring, auto_confirm_on_silence, period_type, allocation, bucket_mapping.";
+        => $"Неизвестный ключ настройки `{raw}`. Доступные ключи: timezone, evening_time, salary_days, shift_rule, silence_deadline_hours, auto_confirm_recurring, auto_confirm_on_silence, period_type, allocation, bucket_mapping, salary_amount.";
 
     public static string SettingsUpdated(FinanceBot.Domain.ValueObjects.SettingsKey key, string? newValue)
         => $"Настройка `{key.ToWireName()}` обновлена: `{newValue ?? "(default)"}`.";

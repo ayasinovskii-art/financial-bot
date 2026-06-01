@@ -17,6 +17,7 @@ public sealed class SettingsKeyTests
     [InlineData(SettingsKey.PeriodType, "period_type")]
     [InlineData(SettingsKey.Allocation, "allocation")]
     [InlineData(SettingsKey.BucketMapping, "bucket_mapping")]
+    [InlineData(SettingsKey.SalaryAmount, "salary_amount")]
     public void ToWireName_roundtrips(SettingsKey key, string wire)
     {
         key.ToWireName().Should().Be(wire);

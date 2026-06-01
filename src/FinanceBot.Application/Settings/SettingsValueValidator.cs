@@ -35,8 +35,36 @@ public static class SettingsValueValidator
             SettingsKey.PeriodType => ValidatePeriodType(trimmed, out normalized, out error),
             SettingsKey.Allocation => ValidateAllocation(trimmed, out normalized, out error),
             SettingsKey.BucketMapping => ValidateBucketMapping(trimmed, out normalized, out error),
+            SettingsKey.SalaryAmount => ValidateSalaryAmount(trimmed, out normalized, out error),
             _ => Fail("Неизвестный ключ настройки.", out normalized, out error)
         };
+    }
+
+    private static bool ValidateSalaryAmount(string raw, out string normalized, out string error)
+    {
+        normalized = string.Empty;
+        error = string.Empty;
+
+        var parts = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length == 0)
+        {
+            error = "Укажи хотя бы одну сумму, например `80000` или `30000,80000`.";
+            return false;
+        }
+
+        var amounts = new List<decimal>(parts.Length);
+        foreach (var p in parts)
+        {
+            if (!decimal.TryParse(p, NumberStyles.Number, CultureInfo.InvariantCulture, out var amount) || amount <= 0m)
+            {
+                error = $"Сумма '{p}' должна быть положительным числом.";
+                return false;
+            }
+            amounts.Add(amount);
+        }
+
+        normalized = string.Join(",", amounts.Select(a => a.ToString("0.##", CultureInfo.InvariantCulture)));
+        return true;
     }
 
     private static bool ValidateTimezone(string raw, out string normalized, out string error)
