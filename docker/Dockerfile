@@ -28,12 +28,9 @@ ENV DOTNET_RUNNING_IN_CONTAINER=true \
     DOTNET_USE_POLLING_FILE_WATCHER=true \
     ASPNETCORE_ENVIRONMENT=Production
 
-RUN groupadd --system --gid 1000 financebot \
- && useradd  --system --uid 1000 --gid financebot --no-create-home financebot
-
 COPY --from=build /app/publish .
-RUN chown -R financebot:financebot /app
-USER financebot
+RUN chown -R $APP_UID:$APP_UID /app
+USER $APP_UID
 
 EXPOSE 8080
 EXPOSE 4053

@@ -6,18 +6,31 @@ services:
     container_name: financebot-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-financebot}
-      POSTGRES_USER: ${POSTGRES_USER:-financebot}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    # Порт наружу не публикуем — postgres доступен только боту через docker-сеть.
+    # Для локальной отладки запусти: docker exec -it financebot-postgres psql -U $POSTGRES_USER
+    expose:
+      - "5432"
     volumes:
       - financebot-postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-financebot} -d ${POSTGRES_DB:-financebot}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_READ_SEARCH
+      - FOWNER
+      - SETGID
+      - SETUID
+    mem_limit: 512m
 
   bot:
     build:
@@ -30,17 +43,35 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
-      ConnectionStrings__Default: ${ConnectionStrings__Default:-Host=postgres;Port=5432;Database=financebot;Username=financebot;Password=change-me}
-      Telegram__BotToken: ${Telegram__BotToken:-}
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+      Telegram__BotToken: ${Telegram__BotToken:?Telegram__BotToken is required}
       Telegram__Mode: ${Telegram__Mode:-Polling}
-      Claude__ApiKey: ${Claude__ApiKey:-}
-      Auth__AdminUserIds__0: ${Auth__AdminUserIds__0:-}
+      Claude__ApiKey: ${Claude__ApiKey:?Claude__ApiKey is required}
+      Auth__AdminUserIds__0: ${Auth__AdminUserIds__0:?Auth__AdminUserIds__0 is required}
+      Akka__Hostname: bot
       Akka__Discovery__Method: ${Akka__Discovery__Method:-config}
       Akka__Cluster__SeedNodes__0: akka.tcp://financebot@bot:4053
+    # Akka remoting (4053) НЕ публикуется наружу — общение только внутри docker-сети.
+    # HTTP — только на loopback хоста.
     ports:
-      - "8080:8080"
-      - "4053:4053"
+      - "127.0.0.1:8080:8080"
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+      - /home/app:size=16m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 1g
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD", "dotnet", "--info"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
 volumes:
   financebot-postgres-data:
