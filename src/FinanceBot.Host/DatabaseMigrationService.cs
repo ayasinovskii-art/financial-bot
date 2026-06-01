@@ -7,8 +7,9 @@ using Microsoft.Extensions.Logging;
 namespace FinanceBot.Host;
 
 /// <summary>
-/// На старте применяет EF миграции для схемы <c>app</c>.
-/// Схема <c>akka</c> создаётся самим Akka.Persistence.PostgreSql (autoInitialize=true).
+/// На старте применяет EF миграции для схемы <c>app</c> и создаёт пустую схему <c>akka</c>.
+/// Akka.Persistence.PostgreSql с autoInitialize=true создаёт сами таблицы, но не схему,
+/// поэтому без CREATE SCHEMA IF NOT EXISTS akka snapshot-store падает с 3F000.
 /// </summary>
 public sealed class DatabaseMigrationService(
     IServiceScopeFactory scopeFactory,
@@ -21,6 +22,11 @@ public sealed class DatabaseMigrationService(
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         try
         {
+            log.LogInformation("Ensuring 'akka' schema exists…");
+            await db.Database.ExecuteSqlRawAsync(
+                "CREATE SCHEMA IF NOT EXISTS akka;",
+                cancellationToken);
+
             log.LogInformation("Applying app-schema migrations…");
             await db.Database.MigrateAsync(cancellationToken);
             log.LogInformation("Migrations applied.");
