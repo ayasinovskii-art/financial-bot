@@ -1,0 +1,5 @@
+# Only the repo owner may change automation config. Protects against an agent
+# (or a prompt-injection) rewriting the pipeline or its own guardrails.
+.github/**           @ayasinovskii-art
+docs/superpowers/**  @ayasinovskii-art
+scripts/**           @ayasinovskii-art

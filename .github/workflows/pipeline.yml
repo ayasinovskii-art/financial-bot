@@ -1,0 +1,160 @@
+name: pipeline
+on:
+  schedule:
+    - cron: '7 * * * *'        # hourly heartbeat (start DISABLED — see Task 11)
+  workflow_dispatch:
+    inputs:
+      force_stage:
+        description: 'Run a specific stage (overrides dispatcher)'
+        required: false
+        default: ''
+      dry_run:
+        description: 'Coder dry-run (no push/PR)'
+        required: false
+        default: 'false'
+
+permissions: {}
+
+concurrency:
+  group: bot-pipeline
+  cancel-in-progress: false
+
+env:
+  MANAGER_INVENTS: '0'         # set to '1' to let the manager invent ideas with empty queue
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: read
+    outputs:
+      stage: ${{ steps.pick.outputs.stage }}
+      issue: ${{ steps.pick.outputs.issue }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5   # v4
+      - id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MANAGER_INVENTS: ${{ env.MANAGER_INVENTS }}
+        run: |
+          if [[ -n "${{ inputs.force_stage }}" ]]; then
+            echo "stage=${{ inputs.force_stage }}" >> "$GITHUB_OUTPUT"
+            echo "issue=" >> "$GITHUB_OUTPUT"
+          else
+            bash scripts/pipeline/dispatch.sh
+          fi
+      - run: echo "Tick -> stage=${{ steps.pick.outputs.stage }} issue=${{ steps.pick.outputs.issue }}"
+
+  manager:
+    needs: dispatch
+    if: needs.dispatch.outputs.stage == 'manager'
+    runs-on: ubuntu-latest
+    permissions: { issues: write }
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5   # v4
+      - uses: anthropics/claude-code-action@fbda2eb1bdc90d319b8d853f5deb53bca199a7c1   # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          model: claude-opus-4-8
+          prompt: |
+            ISSUE=${{ needs.dispatch.outputs.issue }}
+            Read .github/pipeline/prompts/manager.md and execute the MANAGER role.
+
+  analyst:
+    needs: dispatch
+    if: needs.dispatch.outputs.stage == 'analysis'
+    runs-on: ubuntu-latest
+    permissions: { contents: read, issues: write }
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5   # v4
+      - uses: anthropics/claude-code-action@fbda2eb1bdc90d319b8d853f5deb53bca199a7c1   # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          model: claude-opus-4-8
+          prompt: |
+            ISSUE=${{ needs.dispatch.outputs.issue }}
+            Read .github/pipeline/prompts/analyst.md and execute the ANALYST role.
+
+  techlead:
+    needs: dispatch
+    if: needs.dispatch.outputs.stage == 'planning'
+    runs-on: ubuntu-latest
+    permissions: { contents: read, issues: write }
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5   # v4
+      - uses: anthropics/claude-code-action@fbda2eb1bdc90d319b8d853f5deb53bca199a7c1   # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          model: claude-sonnet-4-6
+          prompt: |
+            ISSUE=${{ needs.dispatch.outputs.issue }}
+            Read .github/pipeline/prompts/techlead.md and execute the TECH LEAD role.
+
+  coder:
+    needs: dispatch
+    if: needs.dispatch.outputs.stage == 'coding'
+    runs-on: ubuntu-latest
+    permissions: { contents: write, pull-requests: write, issues: write }
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5   # v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9   # v4
+        with: { dotnet-version: '10.0.x' }
+      - uses: anthropics/claude-code-action@fbda2eb1bdc90d319b8d853f5deb53bca199a7c1   # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          model: claude-sonnet-4-6
+          prompt: |
+            ISSUE=${{ needs.dispatch.outputs.issue }}
+            DRY_RUN=${{ inputs.dry_run == 'true' && '1' || '0' }}
+            Read .github/pipeline/prompts/coder.md and execute the CODER role.
+
+  qa:
+    needs: dispatch
+    if: needs.dispatch.outputs.stage == 'qa'
+    runs-on: ubuntu-latest
+    permissions: { contents: read, issues: write }
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5   # v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9   # v4
+        with: { dotnet-version: '10.0.x' }
+      - uses: anthropics/claude-code-action@fbda2eb1bdc90d319b8d853f5deb53bca199a7c1   # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          model: claude-sonnet-4-6
+          prompt: |
+            ISSUE=${{ needs.dispatch.outputs.issue }}
+            Read .github/pipeline/prompts/qa.md and execute the QA role.
+
+  security:
+    needs: dispatch
+    if: needs.dispatch.outputs.stage == 'security'
+    runs-on: ubuntu-latest
+    permissions: { contents: read, issues: write }
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5   # v4
+        with: { fetch-depth: 0 }
+      - uses: anthropics/claude-code-action@fbda2eb1bdc90d319b8d853f5deb53bca199a7c1   # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          model: claude-sonnet-4-6
+          prompt: |
+            ISSUE=${{ needs.dispatch.outputs.issue }}
+            Read .github/pipeline/prompts/security.md and execute the SECURITY role.
+
+  reviewer:
+    needs: dispatch
+    if: needs.dispatch.outputs.stage == 'review'
+    runs-on: ubuntu-latest
+    permissions: { contents: read, pull-requests: write, issues: write }
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5   # v4
+        with: { fetch-depth: 0 }
+      - uses: anthropics/claude-code-action@fbda2eb1bdc90d319b8d853f5deb53bca199a7c1   # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          model: claude-opus-4-8
+          prompt: |
+            ISSUE=${{ needs.dispatch.outputs.issue }}
+            Read .github/pipeline/prompts/reviewer.md and execute the REVIEWER role.
