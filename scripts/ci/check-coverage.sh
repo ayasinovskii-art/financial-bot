@@ -11,7 +11,9 @@ if [[ ! -f "$report" ]]; then
 fi
 
 # Cobertura stores fractional line coverage in the root <coverage line-rate="..">.
-rate="$(grep -oE 'line-rate="[0-9.]+"' "$report" | head -n1 | grep -oE '[0-9.]+')"
+# Use grep -m1 (stop after the first match) so a large report with thousands of
+# per-class line-rate attrs can't SIGPIPE the producer (which under pipefail aborts).
+rate="$(grep -m1 -oE 'line-rate="[0-9.]+"' "$report" | grep -oE '[0-9.]+')"
 if [[ -z "${rate:-}" ]]; then
   echo "::error::could not parse line-rate from $report" >&2
   exit 2

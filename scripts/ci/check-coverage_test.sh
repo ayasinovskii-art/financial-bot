@@ -20,4 +20,9 @@ if MIN_COVERAGE=0.70 bash "$SUT" "$tmp/low.xml" >/dev/null; then echo "FAIL: bel
 # Missing file -> exit non-zero
 if MIN_COVERAGE=0.70 bash "$SUT" "$tmp/nope.xml" >/dev/null 2>&1; then echo "FAIL: missing should fail"; fail=1; else echo "ok: missing fails"; fi
 
+# Large multi-match report (real ReportGenerator output has thousands of line-rate
+# attrs): must read the ROOT (first) line-rate without breaking the pipe.
+{ printf '<coverage line-rate="0.81">\n'; for i in $(seq 1 5000); do printf '<class line-rate="0.50"/>\n'; done; printf '</coverage>\n'; } > "$tmp/big.xml"
+if MIN_COVERAGE=0.70 bash "$SUT" "$tmp/big.xml" >/dev/null; then echo "ok: big multi-match passes (reads root)"; else echo "FAIL: big multi-match should pass"; fail=1; fi
+
 exit $fail
