@@ -1,0 +1,42 @@
+name: ci
+on:
+  pull_request:
+    branches: [master]
+
+permissions: {}            # default: nothing; read granted per-job below
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test-coverage:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read         # read-only: CI never writes repo or sees pipeline secrets
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5   # v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9   # v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore
+        run: dotnet restore FinanceBot.sln
+      - name: Build (warnings are errors)
+        run: dotnet build FinanceBot.sln -c Release --no-restore
+      - name: Test with coverage
+        run: >
+          dotnet test FinanceBot.sln -c Release --no-build
+          --collect:"XPlat Code Coverage"
+          --results-directory ./coverage
+      - name: Combine coverage report
+        run: |
+          dotnet tool install -g dotnet-reportgenerator-globaltool
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          reportgenerator \
+            -reports:'coverage/**/coverage.cobertura.xml' \
+            -targetdir:coverage/combined \
+            -reporttypes:Cobertura
+      - name: Coverage gate
+        env:
+          MIN_COVERAGE: '0.70'
+        run: bash scripts/ci/check-coverage.sh coverage/combined/Cobertura.xml
