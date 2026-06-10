@@ -94,6 +94,24 @@ public sealed class TelegramBotAdapter : ITelegramBot
             cancellationToken: ct);
     }
 
+    public async Task SendDocumentAsync(long chatId, byte[] document, string fileName, string? caption, CancellationToken ct)
+    {
+        if (_client is null)
+        {
+            _log.LogInformation("[stub] Send document to chat={ChatId}, file={FileName}, size={Size} bytes",
+                chatId, fileName, document.Length);
+            return;
+        }
+
+        using var stream = new MemoryStream(document, writable: false);
+        var input = new InputFileStream(stream, fileName);
+        await _client.SendDocument(
+            chatId: chatId,
+            document: input,
+            caption: caption,
+            cancellationToken: ct);
+    }
+
     public async Task AnswerCallbackAsync(string callbackQueryId, string? text, CancellationToken ct)
     {
         if (_client is null)

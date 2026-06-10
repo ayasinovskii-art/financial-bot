@@ -39,6 +39,13 @@ public sealed record OutgoingTelegramPhoto(
     string FileName,
     string? Caption);
 
+/// <summary>Отправить документ (файл) с подписью пользователю.</summary>
+public sealed record OutgoingTelegramDocument(
+    long ChatId,
+    byte[] Document,
+    string FileName,
+    string? Caption);
+
 /// <summary>Входящий callback от inline-кнопки.</summary>
 public sealed record IncomingCallbackQuery(
     long UpdateId,

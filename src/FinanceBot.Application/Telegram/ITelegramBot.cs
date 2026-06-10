@@ -23,6 +23,9 @@ public interface ITelegramBot
     /// <summary>Отправить фото (PNG) с опциональной подписью.</summary>
     Task SendPhotoAsync(long chatId, byte[] photo, string fileName, string? caption, CancellationToken ct);
 
+    /// <summary>Отправить документ (файл) с опциональной подписью.</summary>
+    Task SendDocumentAsync(long chatId, byte[] document, string fileName, string? caption, CancellationToken ct);
+
     /// <summary>Получить пачку обновлений (long-polling). Возвращает offset следующего вызова.</summary>
     Task<TelegramPollResult> PollAsync(long offset, TimeSpan timeout, CancellationToken ct);
 

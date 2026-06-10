@@ -111,6 +111,14 @@ public sealed class UserActor : ReceivePersistentActor, IWithTimers
             }
             _reportChild.Tell(new EnrichedReportRequest(req, telegramId));
         });
+        Command<RequestExport>(req =>
+        {
+            if (!_state.IsRegistered || _state.TelegramId is not { } telegramId)
+            {
+                return;
+            }
+            _reportChild.Tell(new EnrichedExportRequest(req, telegramId));
+        });
 
         _chartChild = Context.ActorOf(UserChartActor.CreateProps(_userId), "chart");
         Command<RequestChart>(req =>
