@@ -51,6 +51,9 @@ public enum TelegramCommandKind
     // stats: топ категорий за период
     Stats = 97,
 
+    // export: CSV-выгрузка трат периода
+    Export = 98,
+
     Unknown = 99
 }
 
@@ -108,6 +111,7 @@ public static class TelegramCommandParser
             "report" => TelegramCommandKind.Report,
             "tokens" => TelegramCommandKind.Tokens,
             "stats" => TelegramCommandKind.Stats,
+            "export" => TelegramCommandKind.Export,
             _ => TelegramCommandKind.Unknown
         };
 

@@ -83,7 +83,7 @@ public sealed class ReportBuilder(IDbContextFactory<AppDbContext> dbFactory) : I
         return new ReportResult(HasData: true, Text: sb.ToString().TrimEnd());
     }
 
-    public async Task<ReportResult> BuildStatsAsync(Guid userId, int periodsAgo, CancellationToken ct)
+public async Task<ReportResult> BuildStatsAsync(Guid userId, int periodsAgo, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
 
@@ -110,6 +110,52 @@ public sealed class ReportBuilder(IDbContextFactory<AppDbContext> dbFactory) : I
 
         var text = StatsTextBuilder.Build(rows, period.StartDate, periodsAgo);
         return new ReportResult(HasData: rows.Count > 0, Text: text);
+    }
+
+    public async Task<ExportResult> ExportExpensesAsync(Guid userId, int periodsAgo, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+
+        var ordered = await db.Periods
+            .AsNoTracking()
+            .Where(p => p.UserId == userId)
+            .OrderByDescending(p => p.StartDate)
+            .Take(periodsAgo + 1)
+            .ToListAsync(ct).ConfigureAwait(false);
+
+        if (ordered.Count == 0 || periodsAgo >= ordered.Count)
+        {
+            return new ExportResult(HasData: false, FileName: string.Empty, Content: []);
+        }
+
+        var period = ordered[periodsAgo];
+
+        var rows = await db.Expenses
+            .AsNoTracking()
+            .Where(e => e.UserId == userId && e.PeriodId == period.PeriodId)
+            .OrderBy(e => e.OccurredAt)
+            .Select(e => new { e.OccurredAt, e.Amount, e.Category, e.Description })
+            .ToListAsync(ct).ConfigureAwait(false);
+
+        if (rows.Count == 0)
+        {
+            return new ExportResult(HasData: false, FileName: string.Empty, Content: []);
+        }
+
+        var csv = ExpensesCsvBuilder.Build(rows
+            .Select(e => new ExpenseCsvRow(
+                DateOnly.FromDateTime(e.OccurredAt.Date),
+                e.Amount,
+                e.Category,
+                e.Description))
+            .ToArray());
+
+        // UTF-8 c BOM, чтобы Excel корректно распознал кириллицу в описаниях.
+        var content = Encoding.UTF8.GetPreamble()
+            .Concat(Encoding.UTF8.GetBytes(csv))
+            .ToArray();
+        var fileName = $"expenses-{period.StartDate:yyyy-MM-dd}.csv";
+        return new ExportResult(HasData: true, FileName: fileName, Content: content);
     }
 
     private static string FormatHeader(PeriodEntity period, int periodsAgo)

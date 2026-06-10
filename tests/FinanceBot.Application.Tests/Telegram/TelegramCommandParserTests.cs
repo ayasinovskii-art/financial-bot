@@ -22,6 +22,8 @@ public sealed class TelegramCommandParserTests
     [InlineData("/correct", TelegramCommandKind.Correct, "")]
     [InlineData("/stats", TelegramCommandKind.Stats, "")]
     [InlineData("/stats previous", TelegramCommandKind.Stats, "previous")]
+    [InlineData("/export", TelegramCommandKind.Export, "")]
+    [InlineData("/export previous", TelegramCommandKind.Export, "previous")]
     public void TryParse_recognises_known_commands(string input, TelegramCommandKind kind, string args)
     {
         var parsed = TelegramCommandParser.TryParse(input);

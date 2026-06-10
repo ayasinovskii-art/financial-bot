@@ -66,5 +66,10 @@ public sealed record RequestStats(
     Guid UserId,
     string? Period) : IUserScopedCommand;
 
+/// <summary>Запросить CSV-выгрузку трат периода (read-only).</summary>
+public sealed record RequestExport(
+    Guid UserId,
+    string? Period) : IUserScopedCommand;
+
 /// <summary>Отменить активный диалог (FSM в Idle).</summary>
 public sealed record Cancel(Guid UserId) : IUserScopedCommand;

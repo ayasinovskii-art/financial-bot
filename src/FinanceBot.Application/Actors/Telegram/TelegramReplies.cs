@@ -49,6 +49,7 @@ public static class TelegramReplies
            /chart <category|daily|buckets|savings>
            /report [period]
            /stats [current|previous|N] — топ категорий трат за период
+           /export [current|previous|N] — выгрузка трат периода в CSV
            /savings <amount>
 
            Настройки:

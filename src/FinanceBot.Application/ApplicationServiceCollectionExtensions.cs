@@ -207,6 +207,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddSingleton<ITelegramCommandHandler, ChartHandler>();
         services.AddSingleton<ITelegramCommandHandler, ReportHandler>();
         services.AddSingleton<ITelegramCommandHandler, StatsHandler>();
+        services.AddSingleton<ITelegramCommandHandler, ExportHandler>();
         services.AddSingleton<ITelegramCommandHandler, TokensHandler>();
 
         services.AddSingleton<ITelegramCallbackHandler, CorrectionCallbackHandler>();
