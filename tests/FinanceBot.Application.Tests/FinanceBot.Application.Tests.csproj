@@ -21,6 +21,7 @@
     <PackageReference Include="FluentAssertions" />
     <PackageReference Include="Akka.TestKit.Xunit2" />
     <PackageReference Include="Microsoft.Extensions.Options" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="coverlet.collector" />
   </ItemGroup>
 
