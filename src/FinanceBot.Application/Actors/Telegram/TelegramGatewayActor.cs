@@ -6,7 +6,9 @@ using FinanceBot.Application.Actors.Common;
 using FinanceBot.Application.Actors.Telegram.Commands;
 using FinanceBot.Application.Actors.Telegram.Commands.Handlers;
 using FinanceBot.Application.Actors.Telegram.Messages;
+using FinanceBot.Application.Actors.User;
 using FinanceBot.Application.Configuration;
+using FinanceBot.Domain.Commands.User;
 using Microsoft.Extensions.Options;
 
 namespace FinanceBot.Application.Actors.Telegram;
@@ -111,9 +113,21 @@ public sealed class TelegramGatewayActor : ReceiveActor
                 return;
 
             case AccessDecision.Allowed allowed:
+                LinkChat(msg.Update);
                 Dispatch(msg.Update, msg.Parsed, allowed);
                 return;
         }
+    }
+
+    private void LinkChat(IncomingTelegramUpdate update)
+    {
+        var registry = ActorRegistry.For(Context.System);
+        if (!registry.TryGet<UserShardMarker>(out var userShard))
+        {
+            return;
+        }
+        var userId = UserIdFromTelegramId.Resolve(update.TelegramId);
+        userShard.Tell(new ShardEnvelope(userId.ToString("N"), new LinkUserChat(userId, update.ChatId)));
     }
 
     private void Dispatch(IncomingTelegramUpdate update, ParsedTelegramCommand? parsed, AccessDecision.Allowed allowed)

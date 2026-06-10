@@ -16,3 +16,10 @@ public sealed record UserSettingsUpdated(
     string? NewValue,
     DateTimeOffset OccurredAt,
     int EventVersion = 1) : IUserScopedEvent;
+
+/// <summary>Первая привязка или смена chatId пользователя. Персистируется идемпотентно — только при изменении.</summary>
+public sealed record UserChatLinked(
+    Guid UserId,
+    long ChatId,
+    DateTimeOffset OccurredAt,
+    int EventVersion = 1) : IUserScopedEvent;

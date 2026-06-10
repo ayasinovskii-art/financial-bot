@@ -73,3 +73,6 @@ public sealed record RequestExport(
 
 /// <summary>Отменить активный диалог (FSM в Idle).</summary>
 public sealed record Cancel(Guid UserId) : IUserScopedCommand;
+
+/// <summary>Привязать или обновить last-known chatId. Идемпотентно — UserActor персистирует событие только при смене chatId.</summary>
+public sealed record LinkUserChat(Guid UserId, long ChatId) : IUserScopedCommand;
