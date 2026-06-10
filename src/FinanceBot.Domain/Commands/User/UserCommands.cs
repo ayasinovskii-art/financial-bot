@@ -61,5 +61,10 @@ public sealed record RequestReport(
     Guid UserId,
     string? Period) : IUserScopedCommand;
 
+/// <summary>Запросить топ категорий трат за период (read-only сводка).</summary>
+public sealed record RequestStats(
+    Guid UserId,
+    string? Period) : IUserScopedCommand;
+
 /// <summary>Отменить активный диалог (FSM в Idle).</summary>
 public sealed record Cancel(Guid UserId) : IUserScopedCommand;

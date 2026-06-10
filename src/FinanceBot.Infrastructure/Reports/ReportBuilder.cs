@@ -83,6 +83,35 @@ public sealed class ReportBuilder(IDbContextFactory<AppDbContext> dbFactory) : I
         return new ReportResult(HasData: true, Text: sb.ToString().TrimEnd());
     }
 
+    public async Task<ReportResult> BuildStatsAsync(Guid userId, int periodsAgo, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+
+        var ordered = await db.Periods
+            .AsNoTracking()
+            .Where(p => p.UserId == userId)
+            .OrderByDescending(p => p.StartDate)
+            .Take(periodsAgo + 1)
+            .ToListAsync(ct).ConfigureAwait(false);
+
+        if (ordered.Count == 0 || periodsAgo >= ordered.Count)
+        {
+            return new ReportResult(HasData: false, Text: "Нет данных за указанный период.");
+        }
+
+        var period = ordered[periodsAgo];
+
+        var rows = await db.Expenses
+            .AsNoTracking()
+            .Where(e => e.UserId == userId && e.PeriodId == period.PeriodId)
+            .GroupBy(e => e.Category)
+            .Select(g => new CategorySpend(g.Key, g.Sum(e => e.Amount)))
+            .ToListAsync(ct).ConfigureAwait(false);
+
+        var text = StatsTextBuilder.Build(rows, period.StartDate, periodsAgo);
+        return new ReportResult(HasData: rows.Count > 0, Text: text);
+    }
+
     private static string FormatHeader(PeriodEntity period, int periodsAgo)
     {
         var status = period.Status == "active" ? "(активный)" : "(закрытый)";

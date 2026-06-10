@@ -93,3 +93,21 @@ public sealed class ReportHandler : ITelegramCommandHandler
             new RequestReport(userId, period)));
     }
 }
+
+public sealed class StatsHandler : ITelegramCommandHandler
+{
+    public TelegramCommandKind Kind => TelegramCommandKind.Stats;
+
+    public void Execute(TelegramCommandContext ctx)
+    {
+        var shard = ctx.GetShard<UserShardMarker>();
+        if (shard is null)
+        {
+            return;
+        }
+        var userId = UserIdFromTelegramId.Resolve(ctx.Update.TelegramId);
+        var period = string.IsNullOrWhiteSpace(ctx.ArgumentLine) ? null : ctx.ArgumentLine.Trim();
+        shard.Tell(new ShardEnvelope(userId.ToString("N"),
+            new RequestStats(userId, period)));
+    }
+}

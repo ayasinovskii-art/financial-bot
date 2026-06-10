@@ -48,6 +48,9 @@ public enum TelegramCommandKind
     // admin: Claude API rate-limit info
     Tokens = 96,
 
+    // stats: топ категорий за период
+    Stats = 97,
+
     Unknown = 99
 }
 
@@ -104,6 +107,7 @@ public static class TelegramCommandParser
             "chart" => TelegramCommandKind.Chart,
             "report" => TelegramCommandKind.Report,
             "tokens" => TelegramCommandKind.Tokens,
+            "stats" => TelegramCommandKind.Stats,
             _ => TelegramCommandKind.Unknown
         };
 
