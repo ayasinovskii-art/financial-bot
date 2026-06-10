@@ -129,7 +129,22 @@ public static class TelegramReplies
             _ => string.Empty
         };
 
-        return $"Записал {Format(a.Amount)} ₽ → `{a.Category}` ({a.Bucket}).\n{bucketLine}";
+        var reply = $"Записал {Format(a.Amount)} ₽ → `{a.Category}` ({a.Bucket}).\n{bucketLine}";
+
+        // Перерасход бакета подсвечиваем сразу в момент траты, а не только в /advice.
+        var remaining = a.Bucket switch
+        {
+            Bucket.Essentials => a.AllocationEssentials - a.SpentEssentials,
+            Bucket.Fun => a.AllocationFun - a.SpentFun,
+            Bucket.Deposit => a.AllocationDeposit - a.SpentDeposit,
+            _ => 0m
+        };
+        if (remaining < 0m)
+        {
+            reply += $"\n⚠️ Перерасход бакета {a.Bucket} на {Format(-remaining)} ₽";
+        }
+
+        return reply;
     }
 
     public static string TemplateUsage()
