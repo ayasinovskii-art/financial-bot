@@ -4,7 +4,10 @@
 # Requires: docker, a populated .env in repo root (NOT committed), $HOME writable for backups.
 set -euo pipefail
 
-COMPOSE="docker compose -f docker/docker-compose.yml --env-file .env"
+# ENV_FILE: путь к .env с секретами бота. По умолчанию — repo root (host-runner).
+# Runner-в-докере монтирует его read-only вне workspace, т.к. checkout чистит репо (git clean -ffdx).
+ENV_FILE="${ENV_FILE:-.env}"
+COMPOSE="docker compose -f docker/docker-compose.yml --env-file $ENV_FILE"
 BACKUP_DIR="${BACKUP_DIR:-$HOME/financebot-backups}"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8080/health}"
 HEALTH_RETRIES="${HEALTH_RETRIES:-30}"
@@ -14,7 +17,7 @@ ts="$(date +%Y%m%d-%H%M%S)"
 
 echo "==> 1/5 Backing up Postgres"
 # shellcheck disable=SC1091
-set -a; source .env; set +a
+set -a; source "$ENV_FILE"; set +a
 $COMPOSE exec -T postgres pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" \
   > "$BACKUP_DIR/db-$ts.sql" || { echo "::error::pg_dump failed"; exit 1; }
 echo "    backup: $BACKUP_DIR/db-$ts.sql"

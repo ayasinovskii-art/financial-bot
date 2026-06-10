@@ -1,0 +1,48 @@
+# Self-hosted runner для deploy.yml (runs-on: [self-hosted, financebot-deploy]).
+#
+# Первый запуск (регистрация, токен живёт ~1 час):
+#   RUNNER_TOKEN="$(gh api -X POST repos/<owner>/<repo>/actions/runners/registration-token --jq .token)" \
+#   BOT_ENV_FILE=/абсолютный/путь/к/.env \
+#   docker compose -f docker/runner/docker-compose.runner.yml up -d --build
+#
+# Дальнейшие рестарты: токен не нужен (конфигурация в volume financebot-runner-state).
+#
+# Секреты бота НЕ хранятся в GitHub: .env лежит на хосте раннера и монтируется
+# read-only; deploy.sh читает его через ENV_FILE (см. scripts/deploy/deploy.sh).
+name: financebot-runner
+
+services:
+  runner:
+    build: .
+    image: financebot-runner:latest
+    container_name: financebot-runner
+    restart: unless-stopped
+    # root — для доступа к /var/run/docker.sock; runner это разрешает через RUNNER_ALLOW_RUNASROOT.
+    # На сервере можно вместо root задать group_add с GID docker-группы хоста.
+    user: root
+    environment:
+      RUNNER_ALLOW_RUNASROOT: "1"
+      REPO_URL: ${REPO_URL:-https://github.com/ayasinovskii-art/financial-bot}
+      RUNNER_TOKEN: ${RUNNER_TOKEN:-}
+      RUNNER_NAME: ${RUNNER_NAME:-financebot-runner-docker}
+      RUNNER_LABELS: financebot-deploy
+      # Переменные ниже наследуются шагами job'ов (deploy.sh):
+      ENV_FILE: /runner-secrets/.env            # секреты бота — с хоста, read-only
+      HEALTH_URL: http://bot:8080/health        # бот доступен по docker-сети, не через 127.0.0.1 хоста
+      BACKUP_DIR: /backups                      # дампы Postgres — в named volume
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - financebot-runner-state:/home/runner
+      - financebot-runner-backups:/backups
+      - ${BOT_ENV_FILE:?BOT_ENV_FILE (absolute path to bot .env on host) is required}:/runner-secrets/.env:ro
+    networks:
+      - financebot
+
+volumes:
+  financebot-runner-state:
+  financebot-runner-backups:
+
+networks:
+  financebot:
+    external: true
+    name: financebot_default
