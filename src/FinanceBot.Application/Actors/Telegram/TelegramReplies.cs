@@ -48,6 +48,7 @@ public static class TelegramReplies
            /advice clear — сбросить контекст диалога с советником
            /chart <category|daily|buckets|savings>
            /report [period]
+           /stats [current|previous|N] — топ категорий трат за период
            /savings <amount>
 
            Настройки:
