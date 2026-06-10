@@ -148,6 +148,12 @@ public sealed class UserReportActorTests : TestKit
             return Throw is not null ? Task.FromException<ReportResult>(Throw) : Task.FromResult(Report!);
         }
 
+        public Task<ReportResult> BuildStatsAsync(Guid userId, int periodsAgo, CancellationToken ct)
+        {
+            LastPeriodsAgo = periodsAgo;
+            return Throw is not null ? Task.FromException<ReportResult>(Throw) : Task.FromResult(Report!);
+        }
+
         public Task<ExportResult> ExportExpensesAsync(Guid userId, int periodsAgo, CancellationToken ct)
         {
             LastPeriodsAgo = periodsAgo;

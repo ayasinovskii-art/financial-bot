@@ -20,6 +20,8 @@ public sealed class TelegramCommandParserTests
     [InlineData("/expense 750 обед", TelegramCommandKind.Expense, "750 обед")]
     [InlineData("/expense_day 1500", TelegramCommandKind.ExpenseDay, "1500")]
     [InlineData("/correct", TelegramCommandKind.Correct, "")]
+    [InlineData("/stats", TelegramCommandKind.Stats, "")]
+    [InlineData("/stats previous", TelegramCommandKind.Stats, "previous")]
     [InlineData("/export", TelegramCommandKind.Export, "")]
     [InlineData("/export previous", TelegramCommandKind.Export, "previous")]
     public void TryParse_recognises_known_commands(string input, TelegramCommandKind kind, string args)

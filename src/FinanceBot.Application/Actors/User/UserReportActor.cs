@@ -20,15 +20,18 @@ public sealed class UserReportActor : ReceiveActor
         _userId = userId;
         _log = Context.GetLogger();
 
-        Receive<EnrichedReportRequest>(OnRequest);
+        Receive<EnrichedReportRequest>(msg => OnRequest(msg.TelegramId, msg.Request.Period, Mode.Report));
+        Receive<EnrichedStatsRequest>(msg => OnRequest(msg.TelegramId, msg.Request.Period, Mode.Stats));
         Receive<ReportReady>(OnReportReady);
         Receive<EnrichedExportRequest>(OnExportRequest);
         Receive<ExportReady>(OnExportReady);
     }
 
-    private void OnRequest(EnrichedReportRequest msg)
+    private enum Mode { Report, Stats }
+
+    private void OnRequest(long telegramId, string? rawPeriod, Mode mode)
     {
-        var periodsAgo = ParsePeriod(msg.Request.Period);
+        var periodsAgo = ParsePeriod(rawPeriod);
         IReportBuilder builder;
         try
         {
@@ -37,18 +40,20 @@ public sealed class UserReportActor : ReceiveActor
         catch (InvalidOperationException ex)
         {
             _log.Warning(ex, "ReportBuilder not registered.");
-            Context.System.EventStream.Publish(new OutgoingTelegramReply(msg.TelegramId, "Сервис отчётов не доступен."));
+            Context.System.EventStream.Publish(new OutgoingTelegramReply(telegramId, "Сервис отчётов не доступен."));
             return;
         }
 
         var self = Self;
         var userId = _userId;
-        var chatId = msg.TelegramId;
+        var chatId = telegramId;
         Task.Run(async () =>
         {
             try
             {
-                var result = await builder.BuildAsync(userId, periodsAgo, CancellationToken.None).ConfigureAwait(false);
+                var result = mode == Mode.Stats
+                    ? await builder.BuildStatsAsync(userId, periodsAgo, CancellationToken.None).ConfigureAwait(false)
+                    : await builder.BuildAsync(userId, periodsAgo, CancellationToken.None).ConfigureAwait(false);
                 self.Tell(new ReportReady(chatId, result, ErrorMessage: null));
             }
             catch (Exception ex)
@@ -137,5 +142,7 @@ public sealed class UserReportActor : ReceiveActor
 }
 
 public sealed record EnrichedReportRequest(RequestReport Request, long TelegramId);
+
+public sealed record EnrichedStatsRequest(RequestStats Request, long TelegramId);
 
 public sealed record EnrichedExportRequest(RequestExport Request, long TelegramId);

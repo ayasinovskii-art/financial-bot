@@ -61,6 +61,11 @@ public sealed record RequestReport(
     Guid UserId,
     string? Period) : IUserScopedCommand;
 
+/// <summary>Запросить топ категорий трат за период (read-only сводка).</summary>
+public sealed record RequestStats(
+    Guid UserId,
+    string? Period) : IUserScopedCommand;
+
 /// <summary>Запросить CSV-выгрузку трат периода (read-only).</summary>
 public sealed record RequestExport(
     Guid UserId,

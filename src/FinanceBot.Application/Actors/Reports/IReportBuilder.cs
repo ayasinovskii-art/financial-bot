@@ -11,6 +11,9 @@ public interface IReportBuilder
     /// </summary>
     Task<ReportResult> BuildAsync(Guid userId, int periodsAgo, CancellationToken ct);
 
+    /// <summary>Сводка /stats: топ категорий трат за период (см. <see cref="StatsTextBuilder"/>).</summary>
+    Task<ReportResult> BuildStatsAsync(Guid userId, int periodsAgo, CancellationToken ct);
+
     /// <summary>CSV-выгрузка трат периода для /export (см. <see cref="ExpensesCsvBuilder"/>).</summary>
     Task<ExportResult> ExportExpensesAsync(Guid userId, int periodsAgo, CancellationToken ct);
 }
