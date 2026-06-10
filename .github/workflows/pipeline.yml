@@ -57,6 +57,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: |
             --model claude-opus-4-8
+            --allowedTools "Bash,Edit,Write,Read,Glob,Grep"
           prompt: |
             ISSUE=${{ needs.dispatch.outputs.issue }}
             Read .github/pipeline/prompts/manager.md and execute the MANAGER role.
@@ -73,6 +74,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: |
             --model claude-opus-4-8
+            --allowedTools "Bash,Edit,Write,Read,Glob,Grep"
           prompt: |
             ISSUE=${{ needs.dispatch.outputs.issue }}
             Read .github/pipeline/prompts/analyst.md and execute the ANALYST role.
@@ -89,6 +91,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: |
             --model claude-sonnet-4-6
+            --allowedTools "Bash,Edit,Write,Read,Glob,Grep"
           prompt: |
             ISSUE=${{ needs.dispatch.outputs.issue }}
             Read .github/pipeline/prompts/techlead.md and execute the TECH LEAD role.
@@ -108,6 +111,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: |
             --model claude-sonnet-4-6
+            --allowedTools "Bash,Edit,Write,Read,Glob,Grep"
           prompt: |
             ISSUE=${{ needs.dispatch.outputs.issue }}
             DRY_RUN=${{ inputs.dry_run == 'true' && '1' || '0' }}
@@ -128,6 +132,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: |
             --model claude-sonnet-4-6
+            --allowedTools "Bash,Edit,Write,Read,Glob,Grep"
           prompt: |
             ISSUE=${{ needs.dispatch.outputs.issue }}
             Read .github/pipeline/prompts/qa.md and execute the QA role.
@@ -145,6 +150,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: |
             --model claude-sonnet-4-6
+            --allowedTools "Bash,Edit,Write,Read,Glob,Grep"
           prompt: |
             ISSUE=${{ needs.dispatch.outputs.issue }}
             Read .github/pipeline/prompts/security.md and execute the SECURITY role.
@@ -162,6 +168,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: |
             --model claude-opus-4-8
+            --allowedTools "Bash,Edit,Write,Read,Glob,Grep"
           prompt: |
             ISSUE=${{ needs.dispatch.outputs.issue }}
             Read .github/pipeline/prompts/reviewer.md and execute the REVIEWER role.
