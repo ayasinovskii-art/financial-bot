@@ -11,7 +11,8 @@ public sealed record UserSnapshot(
     bool IsRegistered,
     long? TelegramId,
     string? Timezone,
-    IReadOnlyDictionary<string, string?> Settings);
+    IReadOnlyDictionary<string, string?> Settings,
+    long? LastKnownChatId = null);
 
 /// <summary>Reply: настройка успешно изменена.</summary>
 public sealed record SettingsUpdated(Guid UserId, SettingsKey Key, string? OldValue, string? NewValue);

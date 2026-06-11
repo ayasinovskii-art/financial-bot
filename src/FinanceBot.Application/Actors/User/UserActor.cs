@@ -57,6 +57,7 @@ public sealed class UserActor : ReceivePersistentActor, IWithTimers
 
         Recover<UserRegistered>(ApplyEvent);
         Recover<UserSettingsUpdated>(ApplyEvent);
+        Recover<UserChatLinked>(ApplyEvent);
         Recover<BudgetPeriodStarted>(ApplyEvent);
         Recover<IncomeReported>(ApplyEvent);
         Recover<BudgetAllocated>(ApplyEvent);
@@ -86,6 +87,7 @@ public sealed class UserActor : ReceivePersistentActor, IWithTimers
         Command<GetNeedsReviewExpenses>(HandleGetNeedsReview);
         Command<ConfirmSavings>(HandleConfirmSavings);
 
+        Command<LinkUserChat>(HandleLinkUserChat);
         Command<Cancel>(_ => Sender.Tell(new CancelAcknowledged(_userId)));
 
         Command<SaveSnapshotSuccess>(_ => { });
@@ -528,9 +530,28 @@ public sealed class UserActor : ReceivePersistentActor, IWithTimers
         Sender.Tell(new NeedsReviewList(_userId, top));
     }
 
+    private void HandleLinkUserChat(LinkUserChat cmd)
+    {
+        if (!_state.IsRegistered)
+        {
+            return;
+        }
+        if (cmd.ChatId == _state.LastKnownChatId)
+        {
+            return;
+        }
+
+        var evt = new UserChatLinked(_userId, cmd.ChatId, DateTimeOffset.UtcNow);
+        Persist(evt, persisted =>
+        {
+            ApplyEvent(persisted);
+            MaybeSnapshot();
+        });
+    }
+
     private void HandleGetSnapshot(GetUserSnapshot _)
         => Sender.Tell(new UserSnapshot(
-            _userId, _state.IsRegistered, _state.TelegramId, _state.Timezone, _state.Settings));
+            _userId, _state.IsRegistered, _state.TelegramId, _state.Timezone, _state.Settings, _state.LastKnownChatId));
 
     private void HandleConfirmSavings(ConfirmSavings cmd)
     {
@@ -575,6 +596,7 @@ public sealed class UserActor : ReceivePersistentActor, IWithTimers
         {
             UserRegistered r => _state.WithRegistration(r),
             UserSettingsUpdated s => _state.WithSettings(s.Key, s.NewValue),
+            UserChatLinked l => _state with { LastKnownChatId = l.ChatId },
             BudgetPeriodStarted p => _state.WithNewPeriod(p),
             IncomeReported i => _state.WithIncome(i),
             BudgetAllocated a => _state.WithAllocation(a),
@@ -957,7 +979,8 @@ public sealed record UserState(
     Dictionary<string, string?> Settings,
     ActivePeriod? ActivePeriod,
     IReadOnlyDictionary<string, Category> CategoryMemory,
-    bool PeriodClosable)
+    bool PeriodClosable,
+    long? LastKnownChatId = null)
 {
     public static UserState Empty { get; } = new(
         false, null, null, null,

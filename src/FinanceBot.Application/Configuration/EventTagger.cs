@@ -63,6 +63,7 @@ public sealed class EventTagger : IWriteEventAdapter
                 tags.Add(PersistenceTags.UserLifecycle);
                 break;
             case UserRegistered:
+            case UserChatLinked:
                 tags.Add(PersistenceTags.UserLifecycle);
                 break;
             case ConsultationRequested:
