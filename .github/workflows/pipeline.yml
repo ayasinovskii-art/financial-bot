@@ -159,7 +159,7 @@ jobs:
     needs: dispatch
     if: needs.dispatch.outputs.stage == 'review'
     runs-on: ubuntu-latest
-    permissions: { contents: read, pull-requests: write, issues: write, id-token: write }
+    permissions: { contents: write, pull-requests: write, issues: write, id-token: write }
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5   # v4
         with: { fetch-depth: 0 }
