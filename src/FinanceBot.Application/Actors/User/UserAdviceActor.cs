@@ -35,6 +35,7 @@ public sealed class UserAdviceActor : ReceivePersistentActor
     private const int MaxAdviceConversationTurns = 5;
     private readonly List<AdviceConversationTurn> _conversation = new();
     private DateTimeOffset _lastInteractionUtc = DateTimeOffset.MinValue;
+    private Dictionary<Guid, string> _recoveryBuffer = new();
 
     public override string PersistenceId { get; }
 
@@ -44,8 +45,30 @@ public sealed class UserAdviceActor : ReceivePersistentActor
         _log = Context.GetLogger();
         PersistenceId = $"user-{userId:N}-advice";
 
-        Recover<ConsultationRequested>(_ => { });
-        Recover<ConsultationAnswered>(_ => { });
+        Recover<ConsultationRequested>(evt =>
+        {
+            if (evt.Scope == AdvisorTickType.OnDemand && evt.UserQuestion is { } q)
+                _recoveryBuffer[evt.CorrelationId] = q;
+        });
+        Recover<ConsultationAnswered>(evt =>
+        {
+            if (_recoveryBuffer.Remove(evt.CorrelationId, out var q))
+            {
+                _conversation.Add(new AdviceConversationTurn(q, evt.Response));
+                if (_conversation.Count > MaxAdviceConversationTurns)
+                    _conversation.RemoveRange(0, _conversation.Count - MaxAdviceConversationTurns);
+                _lastInteractionUtc = evt.OccurredAt;
+            }
+        });
+        Recover<RecoveryCompleted>(_ =>
+        {
+            _recoveryBuffer = new Dictionary<Guid, string>();
+            if (_lastInteractionUtc != DateTimeOffset.MinValue
+                && DateTimeOffset.UtcNow - _lastInteractionUtc > ConversationTtl)
+            {
+                _conversation.Clear();
+            }
+        });
         Recover<AdviceParked>(evt =>
         {
             _adviceParkedAwaitingRecovery = true;
@@ -55,6 +78,8 @@ public sealed class UserAdviceActor : ReceivePersistentActor
 
         Context.System.EventStream.Subscribe(Self, typeof(ClaudeBecameAvailable));
 
+        Command<GetAdviceConversation>(_ =>
+            Sender.Tell(new AdviceConversationState(_conversation.AsReadOnly(), _lastInteractionUtc)));
         Command<EnrichedRequestConsultation>(OnRequestAdvice);
         Command<EnrichedWeeklyAdvisorTick>(t => StartAdvicePipeline(AdvisorTickType.Weekly, t.TelegramId, userQuestion: null));
         Command<EnrichedMonthlyAdvisorTick>(t => StartAdvicePipeline(AdvisorTickType.Monthly, t.TelegramId, userQuestion: null));
@@ -149,7 +174,8 @@ public sealed class UserAdviceActor : ReceivePersistentActor
             : null;
         var userPrompt = AdvicePromptBuilder.Build(resp.Snapshot, ctxItem.TickType, ctxItem.UserQuestion, history);
         var requestedEvt = new ConsultationRequested(
-            _userId, resp.CorrelationId, userPrompt, ctxItem.TickType, DateTimeOffset.UtcNow);
+            _userId, resp.CorrelationId, userPrompt, ctxItem.TickType, DateTimeOffset.UtcNow,
+            UserQuestion: ctxItem.UserQuestion);
 
         Persist(requestedEvt, _ =>
         {
@@ -295,6 +321,8 @@ public sealed class UserAdviceActor : ReceivePersistentActor
 }
 
 public sealed record AdviceConversationTurn(string Question, string Answer);
+public sealed record GetAdviceConversation(Guid UserId);
+public sealed record AdviceConversationState(IReadOnlyList<AdviceConversationTurn> Turns, DateTimeOffset LastInteractionUtc);
 
 public sealed record EnrichedRequestConsultation(RequestConsultation Request, long TelegramId);
 public sealed record EnrichedWeeklyAdvisorTick(WeeklyAdvisorTickFired Tick, long TelegramId);
