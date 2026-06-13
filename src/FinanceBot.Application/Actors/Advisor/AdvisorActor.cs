@@ -1,6 +1,9 @@
 using Akka.Actor;
 using Akka.Event;
+using Akka.Hosting;
 using FinanceBot.Application.Actors.Common;
+using FinanceBot.Application.Actors.User.Messages;
+using FinanceBot.Application.Configuration;
 using FinanceBot.Domain.Events.Advisor;
 
 namespace FinanceBot.Application.Actors.Advisor;
@@ -29,12 +32,14 @@ public sealed class AdvisorActor : ReceiveActor
         var sender = Sender;
         var reader = _reader;
         var log = _log;
+        var system = Context.System;
         Task.Run(async () =>
         {
             try
             {
                 var snap = await reader.BuildAsync(req.UserId, DateTimeOffset.UtcNow, CancellationToken.None).ConfigureAwait(false);
-                sender.Tell(new BuildSnapshotResponse(req.CorrelationId, req.UserId, snap, ErrorMessage: null));
+                var activeGoals = await FetchActiveGoalsAsync(system, req.UserId, log).ConfigureAwait(false);
+                sender.Tell(new BuildSnapshotResponse(req.CorrelationId, req.UserId, snap with { ActiveGoals = activeGoals }, ErrorMessage: null));
             }
             catch (Exception ex)
             {
@@ -42,6 +47,40 @@ public sealed class AdvisorActor : ReceiveActor
                 sender.Tell(new BuildSnapshotResponse(req.CorrelationId, req.UserId, Snapshot: null, ErrorMessage: ex.Message));
             }
         });
+    }
+
+    private static async Task<IReadOnlyList<GoalSnapshot>> FetchActiveGoalsAsync(
+        ActorSystem system, Guid userId, ILoggingAdapter log)
+    {
+        if (!ActorRegistry.For(system).TryGet<UserShardMarker>(out var shard))
+        {
+            return Array.Empty<GoalSnapshot>();
+        }
+        try
+        {
+            var reply = await shard.Ask<object>(
+                new ShardEnvelope(userId.ToString("N"), new GetUserGoals(userId)),
+                TimeSpan.FromSeconds(3)).ConfigureAwait(false);
+
+            if (reply is UserGoalsList goalsList)
+            {
+                return goalsList.Goals
+                    .Where(g => !g.IsCompleted)
+                    .Select(g => new GoalSnapshot(g.GoalId, g.Description, g.TargetAmount, g.TargetDate))
+                    .ToList();
+            }
+            return Array.Empty<GoalSnapshot>();
+        }
+        catch (AskTimeoutException)
+        {
+            log.Warning("Timeout fetching goals for user {UserId}; using empty list.", userId);
+            return Array.Empty<GoalSnapshot>();
+        }
+        catch (Exception ex)
+        {
+            log.Warning(ex, "Failed to fetch goals for user {UserId}; using empty list.", userId);
+            return Array.Empty<GoalSnapshot>();
+        }
     }
 
     private void HandleBuildLocal(BuildLocalAdviceRequest req)
