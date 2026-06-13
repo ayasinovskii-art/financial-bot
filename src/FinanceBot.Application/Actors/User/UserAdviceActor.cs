@@ -5,6 +5,7 @@ using Akka.Persistence;
 using FinanceBot.Application.Actors.Advisor;
 using FinanceBot.Application.Actors.Claude;
 using FinanceBot.Application.Actors.Telegram.Messages;
+using FinanceBot.Application.Actors.User.Messages;
 using FinanceBot.Domain.Commands.User;
 using FinanceBot.Domain.Events;
 using FinanceBot.Domain.Events.Advisor;
@@ -27,8 +28,10 @@ public sealed class UserAdviceActor : ReceivePersistentActor
 {
     private readonly Guid _userId;
     private readonly ILoggingAdapter _log;
+    private readonly IActorRef _parent;
     private readonly Dictionary<Guid, PendingAdvice> _pendingAdvice = new();
     private bool _adviceParkedAwaitingRecovery;
+    private bool _resumeAskInFlight;
     private AdvisorTickType _parkedTickType;
 
     private static readonly TimeSpan ConversationTtl = TimeSpan.FromHours(1);
@@ -39,10 +42,11 @@ public sealed class UserAdviceActor : ReceivePersistentActor
 
     public override string PersistenceId { get; }
 
-    public UserAdviceActor(Guid userId)
+    public UserAdviceActor(Guid userId, IActorRef? parentRef = null)
     {
         _userId = userId;
         _log = Context.GetLogger();
+        _parent = parentRef ?? Context.Parent;
         PersistenceId = $"user-{userId:N}-advice";
 
         Recover<ConsultationRequested>(evt =>
@@ -84,6 +88,8 @@ public sealed class UserAdviceActor : ReceivePersistentActor
         Command<EnrichedWeeklyAdvisorTick>(t => StartAdvicePipeline(AdvisorTickType.Weekly, t.TelegramId, userQuestion: null));
         Command<EnrichedMonthlyAdvisorTick>(t => StartAdvicePipeline(AdvisorTickType.Monthly, t.TelegramId, userQuestion: null));
         Command<ClaudeBecameAvailable>(OnClaudeBecameAvailable);
+        Command<UserSnapshotForResume>(OnUserSnapshotForResume);
+        Command<Status.Failure>(OnSnapshotAskFailed);
 
         Command<BuildSnapshotResponse>(OnSnapshotResponse);
         Command<BuildLocalAdviceResponse>(OnLocalAdviceResponse);
@@ -115,18 +121,43 @@ public sealed class UserAdviceActor : ReceivePersistentActor
 
     private void OnClaudeBecameAvailable(ClaudeBecameAvailable _)
     {
-        if (!_adviceParkedAwaitingRecovery)
-        {
+        if (!_adviceParkedAwaitingRecovery || _resumeAskInFlight)
             return;
-        }
-        var evt = new AdviceResumedWithFreshContext(_userId, _parkedTickType, DateTimeOffset.UtcNow);
+
+        _resumeAskInFlight = true;
         var tickType = _parkedTickType;
+        _parent.Ask<UserSnapshot>(new GetUserSnapshot(_userId), TimeSpan.FromSeconds(5))
+            .PipeTo(Self,
+                success: snap => (object)new UserSnapshotForResume(snap, tickType),
+                failure: ex => new Status.Failure(ex));
+    }
+
+    private void OnUserSnapshotForResume(UserSnapshotForResume msg)
+    {
+        if (!_adviceParkedAwaitingRecovery)
+            return;
+
+        _resumeAskInFlight = false;
+        var evt = new AdviceResumedWithFreshContext(_userId, msg.TickType, DateTimeOffset.UtcNow);
         Persist(evt, _ =>
         {
             _adviceParkedAwaitingRecovery = false;
-            // На park'нутый tick reply-chat неизвестен — публикуем без явного TelegramId
-            // если кто-то подпишется через scheduler. Для надёжности этот путь нужно
-            // расширить хранением chatId в parked-state (TODO).
+            StartAdvicePipeline(msg.TickType, msg.Snapshot.LastKnownChatId, userQuestion: null);
+        });
+    }
+
+    private void OnSnapshotAskFailed(Status.Failure failure)
+    {
+        if (!_adviceParkedAwaitingRecovery)
+            return;
+
+        _resumeAskInFlight = false;
+        _log.Warning("Failed to get user snapshot for parked advice resume: {0}", failure.Cause.Message);
+        var tickType = _parkedTickType;
+        var evt = new AdviceResumedWithFreshContext(_userId, tickType, DateTimeOffset.UtcNow);
+        Persist(evt, _ =>
+        {
+            _adviceParkedAwaitingRecovery = false;
             StartAdvicePipeline(tickType, replyChatId: null, userQuestion: null);
         });
     }
@@ -309,6 +340,8 @@ public sealed class UserAdviceActor : ReceivePersistentActor
     }
 
     public static Props CreateProps(Guid userId) => Props.Create(() => new UserAdviceActor(userId));
+
+    private sealed record UserSnapshotForResume(UserSnapshot Snapshot, AdvisorTickType TickType);
 
     private sealed record PendingAdvice(
         AdvisorTickType TickType,

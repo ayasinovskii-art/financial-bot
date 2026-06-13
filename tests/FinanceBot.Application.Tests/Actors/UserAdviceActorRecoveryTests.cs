@@ -1,7 +1,9 @@
 using Akka.Actor;
 using Akka.Persistence;
 using FinanceBot.Application.Actors.User;
+using FinanceBot.Application.Actors.User.Messages;
 using FinanceBot.Domain.Events.Advisor;
+using FinanceBot.Domain.Events.Claude;
 using FluentAssertions;
 using Xunit;
 
@@ -106,6 +108,35 @@ public sealed class UserAdviceActorRecoveryTests : AkkaPersistenceTestBase
         var state = ExpectMsg<AdviceConversationState>(TimeSpan.FromSeconds(5));
 
         state.Turns.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ParkThenResume_RequestsSnapshotFromParent_AndUsesLastKnownChatId()
+    {
+        var userId = Guid.NewGuid();
+
+        await SeedEventsAsync($"user-{userId:N}-advice", new object[]
+        {
+            new AdviceParked(userId, AdvisorTickType.Weekly, DateTimeOffset.UtcNow - TimeSpan.FromMinutes(10)),
+        });
+
+        var parentProbe = CreateTestProbe();
+        var actor = Sys.ActorOf(
+            Props.Create(() => new UserAdviceActor(userId, parentProbe.Ref)),
+            $"advice-resume-{userId:N}");
+
+        actor.Tell(new ClaudeBecameAvailable(DateTimeOffset.UtcNow));
+
+        var snapshotRequest = parentProbe.ExpectMsg<GetUserSnapshot>(TimeSpan.FromSeconds(5));
+        snapshotRequest.UserId.Should().Be(userId);
+
+        var emptySettings = new Dictionary<string, string?>().AsReadOnly() as IReadOnlyDictionary<string, string?>;
+        parentProbe.Reply(new UserSnapshot(userId, IsRegistered: true, TelegramId: 9999L,
+            Timezone: null, Settings: emptySettings!, LastKnownChatId: 42L));
+
+        // Second ClaudeBecameAvailable must be ignored — flag cleared after first resume
+        actor.Tell(new ClaudeBecameAvailable(DateTimeOffset.UtcNow));
+        parentProbe.ExpectNoMsg(TimeSpan.FromMilliseconds(500));
     }
 
     private async Task SeedEventsAsync(string persistenceId, IEnumerable<object> events)
