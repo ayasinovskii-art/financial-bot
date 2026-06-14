@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using FinanceBot.Application.Actors.AccessControl;
 using FinanceBot.Application.Actors.User.Messages;
 using FinanceBot.Domain.ValueObjects;
@@ -158,6 +159,44 @@ public static class TelegramReplies
 
     public static string SavingsUsage()
         => "Формат: `/savings <amount>`. Подтверждает фактический перевод на накопления.";
+
+    public static string GoalUsage()
+        => "Команды: `/goal add <описание>`, `/goal list`, `/goal done <номер>`.";
+
+    public static string GoalAdded(Guid goalId)
+        => $"Цель добавлена ✓ (id: {goalId}).";
+
+    public static string GoalDone()
+        => "Цель отмечена как достигнутая!";
+
+    public static string GoalNotFound()
+        => "Цель с таким номером не найдена. Используй `/goal list` для актуального списка.";
+
+    public static string GoalList(IReadOnlyList<GoalState> goals)
+    {
+        var active = goals.Where(g => !g.IsCompleted).ToList();
+        if (active.Count == 0)
+        {
+            return "Активных целей нет. Добавь первую: `/goal add <описание>`.";
+        }
+        var sb = new StringBuilder();
+        sb.AppendLine("Твои финансовые цели:");
+        for (var i = 0; i < active.Count; i++)
+        {
+            var g = active[i];
+            sb.Append($"{i + 1}. {g.Description}");
+            if (g.TargetAmount is { } amt)
+            {
+                sb.Append($" | цель: {Format(amt)} ₽");
+            }
+            if (g.TargetDate is { } date)
+            {
+                sb.Append($" | к {date:yyyy-MM-dd}");
+            }
+            sb.AppendLine();
+        }
+        return sb.ToString().TrimEnd();
+    }
 
     private static string Format(decimal value) => value.ToString("0.00", CultureInfo.InvariantCulture);
 

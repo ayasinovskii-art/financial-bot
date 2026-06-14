@@ -84,6 +84,25 @@ public static class AdvicePromptBuilder
             }
         }
 
+        if (snap.ActiveGoals.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("Финансовые цели:");
+            foreach (var g in snap.ActiveGoals)
+            {
+                sb.Append($"- {g.Description}");
+                if (g.TargetAmount is { } amt)
+                {
+                    sb.Append($" | цель: {Fmt(amt)} ₽");
+                }
+                if (g.TargetDate is { } date)
+                {
+                    sb.Append($" | к {date:yyyy-MM-dd}");
+                }
+                sb.AppendLine();
+            }
+        }
+
         if (conversation is { Count: > 0 })
         {
             sb.AppendLine();

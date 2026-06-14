@@ -36,6 +36,9 @@ public enum TelegramCommandKind
     // savings
     Savings = 70,
 
+    // goals
+    Goal = 75,
+
     // advisor
     Advice = 80,
 
@@ -106,6 +109,7 @@ public static class TelegramCommandParser
             "template" => TelegramCommandKind.Template,
             "plan" => TelegramCommandKind.Plan,
             "savings" => TelegramCommandKind.Savings,
+            "goal" => TelegramCommandKind.Goal,
             "advice" => TelegramCommandKind.Advice,
             "chart" => TelegramCommandKind.Chart,
             "report" => TelegramCommandKind.Report,
