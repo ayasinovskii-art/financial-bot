@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using System.Text;
 using FinanceBot.Application.Actors.User;
 using FinanceBot.Domain.Events.Advisor;
@@ -90,7 +91,7 @@ public static class AdvicePromptBuilder
             sb.AppendLine("Финансовые цели:");
             foreach (var g in snap.ActiveGoals)
             {
-                sb.Append($"- <user_goal>{g.Description}</user_goal>");
+                sb.Append($"- <user_goal>{WebUtility.HtmlEncode(g.Description)}</user_goal>");
                 if (g.TargetAmount is { } amt)
                 {
                     sb.Append($" | цель: {Fmt(amt)} ₽");
