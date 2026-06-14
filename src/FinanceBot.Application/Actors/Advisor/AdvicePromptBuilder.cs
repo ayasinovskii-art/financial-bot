@@ -90,7 +90,7 @@ public static class AdvicePromptBuilder
             sb.AppendLine("Финансовые цели:");
             foreach (var g in snap.ActiveGoals)
             {
-                sb.Append($"- {g.Description}");
+                sb.Append($"- <user_goal>{g.Description}</user_goal>");
                 if (g.TargetAmount is { } amt)
                 {
                     sb.Append($" | цель: {Fmt(amt)} ₽");

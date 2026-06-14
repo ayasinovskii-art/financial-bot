@@ -668,6 +668,11 @@ public sealed class UserActor : ReceivePersistentActor, IWithTimers
             Sender.Tell(new GoalRejected("Описание цели не может быть пустым."));
             return;
         }
+        if (cmd.Description.Length > 500)
+        {
+            Sender.Tell(new GoalRejected("Описание цели не должно превышать 500 символов."));
+            return;
+        }
 
         var evt = new GoalAdded(
             UserId: _userId,

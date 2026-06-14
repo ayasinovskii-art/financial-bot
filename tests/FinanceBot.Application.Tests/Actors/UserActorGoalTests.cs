@@ -36,6 +36,20 @@ public sealed class UserActorGoalTests : AkkaPersistenceTestBase
     }
 
     [Fact]
+    public void AddGoal_with_description_over_500_chars_replies_GoalRejected()
+    {
+        var userId = Guid.NewGuid();
+        var actor = Sys.ActorOf(UserActor.CreateProps(userId));
+        actor.Tell(new RegisterUser(userId, 1L, "UTC"));
+        ExpectMsg<UserRegistrationCompleted>();
+
+        var tooLong = new string('А', 501);
+        actor.Tell(new AddGoal(userId, Guid.NewGuid(), tooLong, null, null));
+
+        ExpectMsg<GoalRejected>().Reason.Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
     public void GetUserGoals_returns_UserGoalsList_without_persisting()
     {
         var userId = Guid.NewGuid();
