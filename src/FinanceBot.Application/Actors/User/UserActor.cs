@@ -14,6 +14,7 @@ using FinanceBot.Domain.Commands.User;
 using FinanceBot.Domain.Events;
 using FinanceBot.Domain.Events.Budget;
 using FinanceBot.Domain.Events.Expense;
+using FinanceBot.Domain.Events.Goal;
 using FinanceBot.Domain.Events.Income;
 using FinanceBot.Domain.Events.Recurring;
 using FinanceBot.Domain.Events.Scheduling;
@@ -66,6 +67,8 @@ public sealed class UserActor : ReceivePersistentActor, IWithTimers
         Recover<ExpenseCategoryCorrected>(ApplyEvent);
         Recover<SavingsReported>(ApplyEvent);
         Recover<BudgetPeriodClosed>(ApplyEvent);
+        Recover<GoalAdded>(ApplyEvent);
+        Recover<GoalCompleted>(ApplyEvent);
         Recover<SnapshotOffer>(offer =>
         {
             if (offer.Snapshot is UserState snap)
@@ -86,6 +89,9 @@ public sealed class UserActor : ReceivePersistentActor, IWithTimers
         Command<CorrectExpenseCategory>(HandleCorrectExpenseCategory);
         Command<GetNeedsReviewExpenses>(HandleGetNeedsReview);
         Command<ConfirmSavings>(HandleConfirmSavings);
+        Command<AddGoal>(HandleAddGoal);
+        Command<CompleteGoal>(HandleCompleteGoal);
+        Command<GetUserGoals>(HandleGetUserGoals);
 
         Command<LinkUserChat>(HandleLinkUserChat);
         Command<Cancel>(_ => Sender.Tell(new CancelAcknowledged(_userId)));
@@ -605,6 +611,8 @@ public sealed class UserActor : ReceivePersistentActor, IWithTimers
             ExpenseCategoryCorrected cc => _state.WithCorrectedExpense(cc, BucketMap.Map(cc.OldCategory), BucketMap.Map(cc.NewCategory)),
             SavingsReported sr => _state with { PeriodClosable = _state.ActivePeriod?.PeriodId == sr.PeriodId },
             BudgetPeriodClosed _ => _state with { ActivePeriod = null, PeriodClosable = false },
+            GoalAdded ga => _state.WithGoalAdded(ga),
+            GoalCompleted gc => _state.WithGoalCompleted(gc),
             _ => _state
         };
     }
@@ -647,6 +655,78 @@ public sealed class UserActor : ReceivePersistentActor, IWithTimers
             return AllocationRatios.Default;
         }
     }
+
+    private void HandleAddGoal(AddGoal cmd)
+    {
+        if (!_state.IsRegistered)
+        {
+            Sender.Tell(new GoalRejected("Сначала зарегистрируйся через /start."));
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(cmd.Description))
+        {
+            Sender.Tell(new GoalRejected("Описание цели не может быть пустым."));
+            return;
+        }
+        if (cmd.Description.Length > 500)
+        {
+            Sender.Tell(new GoalRejected("Описание цели не должно превышать 500 символов."));
+            return;
+        }
+
+        var evt = new GoalAdded(
+            UserId: _userId,
+            GoalId: cmd.GoalId,
+            Description: cmd.Description.Trim(),
+            TargetAmount: cmd.TargetAmount,
+            TargetDate: cmd.TargetDate,
+            OccurredAt: DateTimeOffset.UtcNow);
+
+        var sender = Sender;
+        Persist(evt, persisted =>
+        {
+            ApplyEvent(persisted);
+            MaybeSnapshot();
+            sender.Tell(new GoalAccepted(persisted.GoalId));
+        });
+    }
+
+    private void HandleCompleteGoal(CompleteGoal cmd)
+    {
+        if (!_state.IsRegistered)
+        {
+            Sender.Tell(new GoalRejected("Сначала зарегистрируйся через /start."));
+            return;
+        }
+
+        var goal = _state.Goals.FirstOrDefault(g => g.GoalId == cmd.GoalId);
+        if (goal is null)
+        {
+            Sender.Tell(new GoalRejected("Цель не найдена."));
+            return;
+        }
+        if (goal.IsCompleted)
+        {
+            Sender.Tell(new GoalRejected("Цель уже отмечена как достигнутая."));
+            return;
+        }
+
+        var evt = new GoalCompleted(
+            UserId: _userId,
+            GoalId: cmd.GoalId,
+            OccurredAt: DateTimeOffset.UtcNow);
+
+        var sender = Sender;
+        Persist(evt, persisted =>
+        {
+            ApplyEvent(persisted);
+            MaybeSnapshot();
+            sender.Tell(new GoalCompletedReply(persisted.GoalId));
+        });
+    }
+
+    private void HandleGetUserGoals(GetUserGoals _)
+        => Sender.Tell(new UserGoalsList(_state.Goals));
 
     private void MaybeSnapshot()
     {
@@ -982,6 +1062,8 @@ public sealed record UserState(
     bool PeriodClosable,
     long? LastKnownChatId = null)
 {
+    public IReadOnlyList<GoalState> Goals { get; init; } = Array.Empty<GoalState>();
+
     public static UserState Empty { get; } = new(
         false, null, null, null,
         new Dictionary<string, string?>(StringComparer.Ordinal),
@@ -1170,6 +1252,20 @@ public sealed record UserState(
                 AllocationDeposit = a.AllocationDeposit
             }
         };
+    }
+
+    public UserState WithGoalAdded(GoalAdded evt)
+    {
+        var newGoal = new GoalState(evt.GoalId, evt.Description, evt.TargetAmount, evt.TargetDate, IsCompleted: false);
+        return this with { Goals = [.. Goals, newGoal] };
+    }
+
+    public UserState WithGoalCompleted(GoalCompleted evt)
+    {
+        var updated = Goals
+            .Select(g => g.GoalId == evt.GoalId ? g with { IsCompleted = true } : g)
+            .ToArray();
+        return this with { Goals = updated };
     }
 }
 

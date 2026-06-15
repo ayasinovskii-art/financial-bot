@@ -22,7 +22,8 @@ public sealed record ConsultationRequested(
     string Prompt,
     AdvisorTickType Scope,
     DateTimeOffset OccurredAt,
-    int EventVersion = 1) : IUserScopedEvent;
+    string? UserQuestion = null,
+    int EventVersion = 2) : IUserScopedEvent;
 
 /// <summary>Консультация получена (от Claude или локальных эвристик).</summary>
 public sealed record ConsultationAnswered(

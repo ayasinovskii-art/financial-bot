@@ -76,3 +76,16 @@ public sealed record Cancel(Guid UserId) : IUserScopedCommand;
 
 /// <summary>Привязать или обновить last-known chatId. Идемпотентно — UserActor персистирует событие только при смене chatId.</summary>
 public sealed record LinkUserChat(Guid UserId, long ChatId) : IUserScopedCommand;
+
+/// <summary>Добавить финансовую цель с текстовым описанием и опциональными суммой/датой.</summary>
+public sealed record AddGoal(
+    Guid UserId,
+    Guid GoalId,
+    string Description,
+    decimal? TargetAmount,
+    DateOnly? TargetDate) : IUserScopedCommand;
+
+/// <summary>Отметить цель достигнутой.</summary>
+public sealed record CompleteGoal(
+    Guid UserId,
+    Guid GoalId) : IUserScopedCommand;

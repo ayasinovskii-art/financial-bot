@@ -10,6 +10,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>FinanceBot.Application.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Akka" />
     <PackageReference Include="Akka.Hosting" />
     <PackageReference Include="Akka.Persistence" />

@@ -159,7 +159,7 @@ jobs:
     needs: dispatch
     if: needs.dispatch.outputs.stage == 'review'
     runs-on: ubuntu-latest
-    permissions: { contents: read, pull-requests: write, issues: write, id-token: write }
+    permissions: { contents: write, pull-requests: write, issues: write, id-token: write }
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd   # v5
         with: { fetch-depth: 0 }
@@ -172,3 +172,18 @@ jobs:
           prompt: |
             ISSUE=${{ needs.dispatch.outputs.issue }}
             Read .github/pipeline/prompts/reviewer.md and execute the REVIEWER role.
+
+  # Self-chaining: when this tick did real, successful work, re-trigger the workflow
+  # so the conveyor advances at job speed instead of waiting on the throttled cron.
+  # GITHUB_TOKEN may trigger workflow_dispatch in the same repo (no PAT needed); the
+  # gate fires only on success (!failure) and a non-idle stage, so an idle tick or a
+  # role failure stops the chain. The hourly cron above stays as a self-healing backstop.
+  continue:
+    needs: [dispatch, manager, analyst, techlead, coder, qa, security, reviewer]
+    if: ${{ !failure() && !cancelled() && needs.dispatch.outputs.stage != 'idle' }}
+    runs-on: ubuntu-latest
+    permissions: { actions: write }
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pipeline.yml -R ${{ github.repository }}
