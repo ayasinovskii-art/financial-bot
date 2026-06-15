@@ -102,6 +102,29 @@ public sealed class GoalHandlerTests : AkkaPersistenceTestBase
     }
 
     [Fact]
+    public void List_asks_shard_for_goals_and_forwards_formatted_list()
+    {
+        var shard = CreateTestProbe();
+        var ctx = MakeCtx("list", shard.Ref);
+
+        new GoalHandler().Execute(ctx);
+
+        var envelope = shard.ExpectMsg<ShardEnvelope>(TimeSpan.FromSeconds(2));
+        envelope.Message.Should().BeOfType<GetUserGoals>();
+
+        shard.Reply(new UserGoalsList([
+            new GoalState(Guid.NewGuid(), "Скальная школа в горах", null, null, IsCompleted: false)
+        ]));
+
+        var completed = ExpectMsg<TelegramCommandCompleted>(TimeSpan.FromSeconds(2));
+        var replies = completed.Outgoing.OfType<OutgoingTelegramReply>().ToList();
+        replies.Should().ContainSingle();
+        replies[0].ChatId.Should().Be(TestChatId);
+        replies[0].Text.Should().Contain("1.");
+        replies[0].Text.Should().Contain("Скальная школа в горах");
+    }
+
+    [Fact]
     public void Done_with_non_numeric_index_replies_format_hint_without_touching_shard()
     {
         var shard = CreateTestProbe();
