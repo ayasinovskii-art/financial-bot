@@ -84,7 +84,7 @@ public sealed class CorrectHandler : ITelegramCommandHandler
             var row = new List<InlineButton>();
             for (var j = i; j < Math.Min(i + 3, keys.Length); j++)
             {
-                row.Add(new InlineButton(keys[j].ToString(), $"correct:{expenseId:N}:{keys[j]}"));
+                row.Add(new InlineButton(keys[j].ToString(), CallbackPayload.Encode("correct", expenseId, keys[j].ToString())));
             }
             rows.Add(row);
         }
@@ -98,10 +98,8 @@ public sealed class CorrectionCallbackHandler : ITelegramCallbackHandler
 
     public void Execute(TelegramCallbackContext ctx)
     {
-        var rest = ctx.Callback.Data[DataPrefix.Length..];
-        var parts = rest.Split(':', 2);
-        if (parts.Length != 2 || !Guid.TryParseExact(parts[0], "N", out var expenseId)
-            || !CategoryExtensions.TryParse(parts[1], out var category))
+        if (!CallbackPayload.TryDecode(ctx.Callback.Data, out _, out var expenseId, out var shortArg)
+            || shortArg is null || !CategoryExtensions.TryParse(shortArg, out var category))
         {
             ctx.Log.Warning("Bad correct callback payload: {Data}", ctx.Callback.Data);
             ctx.Self.Tell(new OutgoingCallbackAck(ctx.Callback.CallbackQueryId, "Не понял callback."));
