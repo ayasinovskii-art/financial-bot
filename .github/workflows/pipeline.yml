@@ -55,6 +55,7 @@ jobs:
       - uses: anthropics/claude-code-action@fbda2eb1bdc90d319b8d853f5deb53bca199a7c1   # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_bots: "*"
           claude_args: |
             --model claude-opus-4-8
             --allowedTools "Bash,Edit,Write,Read,Glob,Grep"
@@ -72,6 +73,7 @@ jobs:
       - uses: anthropics/claude-code-action@fbda2eb1bdc90d319b8d853f5deb53bca199a7c1   # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_bots: "*"
           claude_args: |
             --model claude-opus-4-8
             --allowedTools "Bash,Edit,Write,Read,Glob,Grep"
@@ -89,6 +91,7 @@ jobs:
       - uses: anthropics/claude-code-action@fbda2eb1bdc90d319b8d853f5deb53bca199a7c1   # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_bots: "*"
           claude_args: |
             --model claude-sonnet-4-6
             --allowedTools "Bash,Edit,Write,Read,Glob,Grep"
@@ -109,6 +112,7 @@ jobs:
       - uses: anthropics/claude-code-action@fbda2eb1bdc90d319b8d853f5deb53bca199a7c1   # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_bots: "*"
           claude_args: |
             --model claude-sonnet-4-6
             --allowedTools "Bash,Edit,Write,Read,Glob,Grep"
@@ -130,6 +134,7 @@ jobs:
       - uses: anthropics/claude-code-action@fbda2eb1bdc90d319b8d853f5deb53bca199a7c1   # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_bots: "*"
           claude_args: |
             --model claude-sonnet-4-6
             --allowedTools "Bash,Edit,Write,Read,Glob,Grep"
@@ -148,6 +153,7 @@ jobs:
       - uses: anthropics/claude-code-action@fbda2eb1bdc90d319b8d853f5deb53bca199a7c1   # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_bots: "*"
           claude_args: |
             --model claude-sonnet-4-6
             --allowedTools "Bash,Edit,Write,Read,Glob,Grep"
@@ -166,6 +172,7 @@ jobs:
       - uses: anthropics/claude-code-action@fbda2eb1bdc90d319b8d853f5deb53bca199a7c1   # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_bots: "*"
           claude_args: |
             --model claude-opus-4-8
             --allowedTools "Bash,Edit,Write,Read,Glob,Grep"
