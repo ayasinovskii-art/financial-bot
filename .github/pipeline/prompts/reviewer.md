@@ -20,6 +20,6 @@ instead AUTO-MERGE on green CI:
      `stage:review`->`stage:done` (this is what the human sees in the morning).
 CHANGES NEEDED -> write them into state block `review_feedback`, increment
 `review_iterations`.
-  If `review_iterations` > 2 OR `total_coding_passes` > 5 -> BLOCKED (label
+  If `review_iterations` > 2 OR `total_coding_passes` > 8 -> BLOCKED (label
   `stage:blocked` + `needs-human`, `"stage":"blocked"`, comment).
   Else -> swap label back to `stage:coding`, set `"stage":"coding"`.

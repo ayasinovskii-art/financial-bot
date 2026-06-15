@@ -12,7 +12,16 @@ YOUR JOB — verdict = build OK + tests OK + acceptance criteria met + coverage 
 3. Check each plan `accept` criterion.
 PASS (all green) -> set `"stage":"security"`, swap label `stage:qa`->`stage:security`,
 post a PASS comment.
-FAIL -> write specifics into state block `qa_feedback`, increment `qa_iterations`.
-  If `qa_iterations` > 2 OR `total_coding_passes` > 5 -> go to BLOCKED:
-  set `"stage":"blocked"`, label `stage:blocked` + `needs-human`, comment why.
-  Else -> swap label back to `stage:coding`, set `"stage":"coding"`.
+FAIL -> classify the failure, write specifics into the state block, then return to
+coding unless a loop-guard trips:
+  - HARD FAIL (build fails / tests fail / a logic acceptance criterion unmet):
+    write `qa_feedback`, increment `qa_iterations`.
+    If `qa_iterations` > 2 OR `total_coding_passes` > 8 -> BLOCKED:
+    set `"stage":"blocked"`, label `stage:blocked` + `needs-human`, comment why.
+    Else -> swap label back to `stage:coding`, set `"stage":"coding"`.
+  - COVERAGE-ONLY FAIL (build + tests + every acceptance criterion green; only the
+    NEW/changed code's coverage is missing): write `qa_feedback`, increment
+    `coverage_iterations`.
+    If `coverage_iterations` > 4 OR `total_coding_passes` > 8 -> BLOCKED (as above).
+    Else -> swap label back to `stage:coding`, set `"stage":"coding"`, and name in
+    `qa_feedback` the exact uncovered path/lines and the precise test to add.
