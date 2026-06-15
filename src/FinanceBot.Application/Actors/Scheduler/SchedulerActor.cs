@@ -263,7 +263,7 @@ public sealed class SchedulerActor : ReceiveActor, IWithTimers
         return next > from && next <= to;
     }
 
-    private static bool CrossesLocalSunday(TimeZoneInfo tz, DateTimeOffset from, DateTimeOffset to, int hour)
+    internal static bool CrossesLocalSunday(TimeZoneInfo tz, DateTimeOffset from, DateTimeOffset to, int hour)
     {
         var localFrom = TimeZoneInfo.ConvertTime(from, tz);
         var localTo = TimeZoneInfo.ConvertTime(to, tz);
