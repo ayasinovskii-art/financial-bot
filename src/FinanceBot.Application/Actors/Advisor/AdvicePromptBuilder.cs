@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using System.Text;
 using FinanceBot.Application.Actors.User;
 using FinanceBot.Domain.Events.Advisor;
@@ -81,6 +82,25 @@ public static class AdvicePromptBuilder
             foreach (var e in snap.TopExpenses.Take(5))
             {
                 sb.AppendLine($"- {e.OccurredAt:yyyy-MM-dd} {e.Description}: {Fmt(e.Amount)} [{e.Category}].");
+            }
+        }
+
+        if (snap.ActiveGoals.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("Финансовые цели:");
+            foreach (var g in snap.ActiveGoals)
+            {
+                sb.Append($"- <user_goal>{WebUtility.HtmlEncode(g.Description)}</user_goal>");
+                if (g.TargetAmount is { } amt)
+                {
+                    sb.Append($" | цель: {Fmt(amt)} ₽");
+                }
+                if (g.TargetDate is { } date)
+                {
+                    sb.Append($" | к {date:yyyy-MM-dd}");
+                }
+                sb.AppendLine();
             }
         }
 

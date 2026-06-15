@@ -12,6 +12,8 @@ public static class PersistenceTags
     public const string Advisor = "advisor";
     public const string Report = "report";
 
+    public const string Goal = "goal";
+
     /// <summary>Тег жизненного цикла пользователя: UserRegistered + UserSettingsUpdated. Используется UsersListProjection.</summary>
     public const string UserLifecycle = "user-lifecycle";
 
