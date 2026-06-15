@@ -36,6 +36,7 @@ public static class SettingsValueValidator
             SettingsKey.Allocation => ValidateAllocation(trimmed, out normalized, out error),
             SettingsKey.BucketMapping => ValidateBucketMapping(trimmed, out normalized, out error),
             SettingsKey.SalaryAmount => ValidateSalaryAmount(trimmed, out normalized, out error),
+            SettingsKey.NotificationsEnabled => ValidateBool(trimmed, out normalized, out error),
             _ => Fail("Неизвестный ключ настройки.", out normalized, out error)
         };
     }

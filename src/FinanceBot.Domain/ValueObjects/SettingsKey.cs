@@ -15,7 +15,8 @@ public enum SettingsKey
     PeriodType = 8,
     Allocation = 9,
     BucketMapping = 10,
-    SalaryAmount = 11
+    SalaryAmount = 11,
+    NotificationsEnabled = 12
 }
 
 public static class SettingsKeyExtensions
@@ -37,6 +38,7 @@ public static class SettingsKeyExtensions
         SettingsKey.Allocation => "allocation",
         SettingsKey.BucketMapping => "bucket_mapping",
         SettingsKey.SalaryAmount => "salary_amount",
+        SettingsKey.NotificationsEnabled => "notifications_enabled",
         _ => throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown settings key.")
     };
 
@@ -54,6 +56,7 @@ public static class SettingsKeyExtensions
         SettingsKey.Allocation => "50/25/25",
         SettingsKey.BucketMapping => "(пусто)",
         SettingsKey.SalaryAmount => "(не задано)",
+        SettingsKey.NotificationsEnabled => "false",
         _ => throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown settings key.")
     };
 
@@ -71,6 +74,7 @@ public static class SettingsKeyExtensions
         SettingsKey.Allocation => "Доли бюджета essentials/fun/deposit в процентах (сумма = 100).",
         SettingsKey.BucketMapping => "Переопределение маппинга категория → бакет (поверх дефолта).",
         SettingsKey.SalaryAmount => "Ожидаемая сумма зарплаты/аванса, параллельно salary_days. Используется advisor'ом для прогнозов.",
+        SettingsKey.NotificationsEnabled => "Проактивные push-сообщения от бота (true|false). По умолчанию выключено.",
         _ => string.Empty
     };
 
@@ -88,6 +92,7 @@ public static class SettingsKeyExtensions
         SettingsKey.Allocation => "50/25/25",
         SettingsKey.BucketMapping => "DiningOut=Essentials,Subscriptions=Fun",
         SettingsKey.SalaryAmount => "30000,80000",
+        SettingsKey.NotificationsEnabled => "true",
         _ => string.Empty
     };
 
@@ -133,6 +138,9 @@ public static class SettingsKeyExtensions
                 return true;
             case "salary_amount":
                 key = SettingsKey.SalaryAmount;
+                return true;
+            case "notifications_enabled":
+                key = SettingsKey.NotificationsEnabled;
                 return true;
             default:
                 return false;
