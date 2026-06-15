@@ -26,9 +26,12 @@ Root causes (diagnosed 2026-06-15):
    security- and qa-driven passes, so a normal issue (plan + 2 sec + 2 qa) trips the cap by itself.
    **This is exactly how #15 blocked.**
 4. **P3 — queue starvation.** Only #16/#18 carry `bot:queue`. #14/#17/#19 are ready but unlabeled.
+5. **P4 — leaked credential.** The live `CLAUDE_CODE_OAUTH_TOKEN` was pasted in plaintext into chat on
+   2026-06-10, so it must be treated as compromised. GitHub's secret-masking only covers Actions logs
+   (exact-match, best-effort) and cannot scrub a value exposed outside GitHub.
 
-Out of scope (deferred): parallel multi-issue fan-out (YAGNI for a 2-5 item queue); OAuth token
-rotation (a human/interactive action — tracked separately, see security note in `autonomous-pipeline` memory).
+Out of scope (deferred): parallel multi-issue fan-out (YAGNI for a 2-5 item queue). OAuth token
+rotation (Change 5) is performed manually by the repo owner, not by the pipeline PR.
 
 ## Design
 
@@ -86,6 +89,32 @@ sec+qa rounds no longer self-trip the global cap. Logic failures still hard-stop
 `gh issue edit 14 17 19 --add-label bot:queue`. These carry `Depends-on: #18`, so dispatch holds them
 until #18 closes (no manual gating). Keeps the conveyor fed once #16/#18 land.
 
+### Change 5 — OAuth token rotation & hardening (P4, manual)
+
+The leaked `CLAUDE_CODE_OAUTH_TOKEN` (P4) is rotated by the repo owner out-of-band — it needs an
+interactive Anthropic login and must never transit chat, a command line, or shell history. This is the
+one fix the conveyor cannot make for itself and the only one requiring a human, hence kept separate from
+the automated Changes 1-4.
+
+**Why log-scrubbing is not enough.** GitHub Actions auto-masks registered `secrets.*` in run logs as
+`***`, but masking is (a) exact-match/best-effort — a transformed value (base64, url-encode, split lines)
+slips past it, (b) scoped to Actions logs only, and (c) no defence against a hostile workflow printing the
+secret. The token here leaked into **chat**, outside GitHub entirely, so masking is irrelevant. Once a
+secret's plaintext leaves the vault, treat it as compromised and rotate.
+
+**Rotation (owner action):**
+1. `claude setup-token` — generate a fresh token (printed once).
+2. `gh secret set CLAUDE_CODE_OAUTH_TOKEN -R ayasinovskii-art/financial-bot` — store write-only via the
+   hidden stdin prompt (or the web UI: Settings → Secrets and variables → Actions). Never pass it via
+   `--body` on the command line or echo it.
+3. Revoke the old token in the Anthropic account if a revoke control exists; otherwise it expires on its own.
+
+**Hardening invariants (going forward):**
+- Reference the secret only as `${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}`; never `echo`/`cat`/print it in a `run:` step.
+- Keep it write-only (set via stdin/UI) so the value never lands in shell history, a command line, or chat.
+- Do not add `pull_request_target` triggers that run untrusted fork code while secrets are in scope.
+- Never paste the token into issues, PRs, commits, or chat.
+
 ## Testing / verification
 
 - `scripts/pipeline/state_test.sh` still passes (dispatch/state semantics unchanged).
@@ -94,12 +123,16 @@ until #18 closes (no manual gating). Keeps the conveyor fed once #16/#18 land.
 - After merge: `gh workflow run pipeline.yml` once, then confirm the `continue` job fired a follow-up
   run and that an `idle` tick does **not** chain.
 - Change 4 verified by `gh issue view 14/17/19` showing `bot:queue` and dispatch skipping them while #18 open.
+- Change 5 verified after rotation: a `gh workflow run pipeline.yml` tick authenticates and a role job
+  runs green on the new token; no run depends on the old value. `git log -p`/PR/issue search shows the
+  token string nowhere in the repo.
 
 ## Rollout
 
 - Changes 2 + 3 + this spec → branch `chore/pipeline-throughput` → PR → merge after CI green.
 - Change 1 (PR #24) merged separately (its own branch).
 - Change 4 is label-only via `gh` (no PR).
+- Change 5 (token rotation) is a manual owner action, out-of-band from the PR.
 
 ## Risks & mitigations
 
@@ -109,3 +142,4 @@ until #18 closes (no manual gating). Keeps the conveyor fed once #16/#18 land.
 | A "successful" Claude no-op re-runs the same stage forever | Pre-existing risk, now bounded by loop-guards + `--allowedTools` (fixed #22); residual, accepted. |
 | Loop-guard too lax → long coverage loops | `coverage_iterations` capped at 4 and `total_coding_passes` at 8. |
 | YAML/prompt edit breaks a run | Reversible config; cron backstop; PR CI gate. |
+| Leaked OAuth token still valid (pasted in chat 06-10) | Rotate via `claude setup-token` + `gh secret set`, revoke old, keep write-only (Change 5); log-masking does not cover the chat exposure. |
