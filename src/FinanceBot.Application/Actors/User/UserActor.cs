@@ -16,6 +16,7 @@ using FinanceBot.Domain.Events.Budget;
 using FinanceBot.Domain.Events.Expense;
 using FinanceBot.Domain.Events.Goal;
 using FinanceBot.Domain.Events.Income;
+using FinanceBot.Domain.Events.Notifications;
 using FinanceBot.Domain.Events.Recurring;
 using FinanceBot.Domain.Events.Scheduling;
 using FinanceBot.Domain.Events.User;
@@ -44,6 +45,7 @@ public sealed class UserActor : ReceivePersistentActor, IWithTimers
     private IActorRef _reportChild = null!;
     private IActorRef _chartChild = null!;
     private IActorRef _adviceChild = null!;
+    private IActorRef _notificationsChild = null!;
 
     public ITimerScheduler Timers { get; set; } = null!;
 
@@ -166,6 +168,16 @@ public sealed class UserActor : ReceivePersistentActor, IWithTimers
         {
             if (_state.TelegramId is { } tid)
                 _adviceChild.Tell(new EnrichedMonthlyAdvisorTick(tick, tid));
+        });
+
+        _notificationsChild = Context.ActorOf(UserNotificationsActor.CreateProps(_userId), "notifications");
+        Command<WeeklyDigestTickFired>(tick =>
+        {
+            if (!IsNotificationsEnabled() || _state.TelegramId is not { } tid)
+            {
+                return;
+            }
+            _notificationsChild.Tell(new EnrichedWeeklyDigestTick(tick, tid));
         });
 
         WireEveningSurvey();
@@ -484,6 +496,8 @@ public sealed class UserActor : ReceivePersistentActor, IWithTimers
                 persisted.Category, bucket,
                 _state.ActivePeriod.SpentEssentials, _state.ActivePeriod.SpentFun, _state.ActivePeriod.SpentDeposit,
                 _state.ActivePeriod.AllocationEssentials, _state.ActivePeriod.AllocationFun, _state.ActivePeriod.AllocationDeposit));
+
+            MaybeFireProactiveTriggers(expenseId, pending.Amount, persisted.Category);
         });
     }
 
@@ -978,6 +992,45 @@ public sealed class UserActor : ReceivePersistentActor, IWithTimers
         Context.System.EventStream.Publish(new OutgoingTelegramReply(
             chatId,
             $"Сегодня день зарплаты ({tick.SalaryDay}). Запиши доход через `/income <сумма>`."));
+    }
+
+    private bool IsNotificationsEnabled()
+        => _state.Settings.TryGetValue(SettingsKey.NotificationsEnabled.ToWireName(), out var v)
+           && string.Equals(v, "true", StringComparison.OrdinalIgnoreCase);
+
+    private void MaybeFireProactiveTriggers(Guid expenseId, decimal amount, Category category)
+    {
+        if (!IsNotificationsEnabled() || _state.TelegramId is not { } telegramId || _state.ActivePeriod is null)
+        {
+            return;
+        }
+
+        var bucket = BucketMap.Map(category);
+        var (allocation, spent) = bucket switch
+        {
+            Bucket.Essentials => (_state.ActivePeriod.AllocationEssentials, _state.ActivePeriod.SpentEssentials),
+            Bucket.Fun => (_state.ActivePeriod.AllocationFun, _state.ActivePeriod.SpentFun),
+            Bucket.Deposit => (_state.ActivePeriod.AllocationDeposit, _state.ActivePeriod.SpentDeposit),
+            _ => (0m, 0m)
+        };
+
+        if (allocation <= 0m)
+        {
+            return;
+        }
+
+        var bucketName = bucket.ToString();
+
+        if (amount > allocation * 0.2m)
+        {
+            _notificationsChild.Tell(new EnrichedProactiveTrigger(
+                "large_expense", bucketName, amount, allocation, telegramId));
+        }
+        else if (spent / allocation >= 0.8m)
+        {
+            _notificationsChild.Tell(new EnrichedProactiveTrigger(
+                "bucket_near_limit", bucketName, spent, allocation, telegramId));
+        }
     }
 
     private TimeZoneInfo ResolveDefaultTimezone()

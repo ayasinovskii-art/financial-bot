@@ -37,3 +37,9 @@ public sealed record EveningQuestionAsked(
     DateOnly Date,
     DateTimeOffset OccurredAt,
     int EventVersion = 1) : IUserScopedEvent;
+
+/// <summary>Сработал воскресный тик еженедельного дайджеста.</summary>
+public sealed record WeeklyDigestTickFired(
+    Guid UserId,
+    DateTimeOffset OccurredAt,
+    int EventVersion = 1) : IUserScopedEvent;

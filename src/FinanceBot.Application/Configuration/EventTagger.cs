@@ -8,6 +8,7 @@ using FinanceBot.Domain.Events.Income;
 using FinanceBot.Domain.Events.Reports;
 using FinanceBot.Domain.Events.User;
 using FinanceBot.Domain.Events.Goal;
+using FinanceBot.Domain.Events.Notifications;
 using FinanceBot.Domain.Events.Whitelist;
 
 namespace FinanceBot.Application.Configuration;
@@ -80,6 +81,9 @@ public sealed class EventTagger : IWriteEventAdapter
             case GoalAdded:
             case GoalCompleted:
                 tags.Add(PersistenceTags.Goal);
+                break;
+            case ProactiveNotificationSent:
+                tags.Add(PersistenceTags.Notification);
                 break;
         }
 

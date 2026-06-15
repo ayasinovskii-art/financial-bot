@@ -202,6 +202,9 @@ public sealed class SchedulerActor : ReceiveActor, IWithTimers
     /// <summary>Час локального времени сервера, когда шлём ClaudeAutoRecoveryTick (default 20).</summary>
     public const int ClaudeAutoRecoveryHour = 20;
 
+    /// <summary>Час local-time пользователя, когда шлём WeeklyDigestTick по воскресеньям.</summary>
+    public const int WeeklyDigestHour = 9;
+
     private async Task DispatchDueTicksAsync(
         UserDirectoryEntry user, DateTimeOffset from, DateTimeOffset to, IActorRef userShard, CancellationToken ct)
     {
@@ -238,6 +241,14 @@ public sealed class SchedulerActor : ReceiveActor, IWithTimers
                 user.UserId.ToString("N"),
                 new MonthlyAdvisorTickFired(user.UserId, to)));
         }
+
+        // WeeklyDigestTick: воскресенье в 09:00 local-time пользователя.
+        if (CrossesLocalSunday(user.Settings.Timezone, from, to, WeeklyDigestHour))
+        {
+            userShard.Tell(new ShardEnvelope(
+                user.UserId.ToString("N"),
+                new WeeklyDigestTickFired(user.UserId, to)));
+        }
     }
 
     private async Task<bool> IsAdvisorTickInWindowAsync(
@@ -250,6 +261,26 @@ public sealed class SchedulerActor : ReceiveActor, IWithTimers
             ? await _resolver.NextWeeklyAdvisorTickAsync(s, probe, ct).ConfigureAwait(false)
             : await _resolver.NextMonthlyAdvisorTickAsync(s, probe, ct).ConfigureAwait(false);
         return next > from && next <= to;
+    }
+
+    private static bool CrossesLocalSunday(TimeZoneInfo tz, DateTimeOffset from, DateTimeOffset to, int hour)
+    {
+        var localFrom = TimeZoneInfo.ConvertTime(from, tz);
+        var localTo = TimeZoneInfo.ConvertTime(to, tz);
+        for (var d = localFrom.Date; d <= localTo.Date; d = d.AddDays(1))
+        {
+            if (d.DayOfWeek != DayOfWeek.Sunday)
+            {
+                continue;
+            }
+            var local = new DateTime(d.Year, d.Month, d.Day, hour, 0, 0, DateTimeKind.Unspecified);
+            var fireAt = new DateTimeOffset(local, tz.GetUtcOffset(local)).ToUniversalTime();
+            if (fireAt > from && fireAt <= to)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static bool CrossesLocalTime(TimeZoneInfo tz, DateTimeOffset from, DateTimeOffset to, TimeOfDay time)

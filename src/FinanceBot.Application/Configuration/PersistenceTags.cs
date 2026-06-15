@@ -14,6 +14,8 @@ public static class PersistenceTags
 
     public const string Goal = "goal";
 
+    public const string Notification = "notification";
+
     /// <summary>Тег жизненного цикла пользователя: UserRegistered + UserSettingsUpdated. Используется UsersListProjection.</summary>
     public const string UserLifecycle = "user-lifecycle";
 
