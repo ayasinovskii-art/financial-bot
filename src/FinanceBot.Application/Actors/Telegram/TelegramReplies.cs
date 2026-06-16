@@ -198,6 +198,15 @@ public static class TelegramReplies
         return sb.ToString().TrimEnd();
     }
 
+    public static string NlpClarifyExpense(string description, decimal amount)
+        => $"Понял трату: «{description}» на {Format(amount)} ₽. Записать?";
+
+    public static string NlpClarifyIncome(string description, decimal amount)
+        => $"Понял доход: «{description}» на {Format(amount)} ₽. Записать?";
+
+    public static string NlpRecordedByAI(string category)
+        => $"Записал. Определил категорию: {category}.";
+
     private static string Format(decimal value) => value.ToString("0.00", CultureInfo.InvariantCulture);
 
     public static string WhitelistList(WhitelistEntry[] entries, long[] admins)

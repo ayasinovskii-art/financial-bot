@@ -8,7 +8,8 @@ namespace FinanceBot.Application.Actors.Telegram.Commands.Handlers;
 
 internal static class ExpenseShared
 {
-    public static void Dispatch(TelegramCommandContext ctx, DateOnly? date, decimal amount, string description)
+    public static void Dispatch(TelegramCommandContext ctx, DateOnly? date, decimal amount, string description,
+        ExpenseSource source = ExpenseSource.Manual)
     {
         var shard = ctx.GetShard<UserShardMarker>();
         if (shard is null)
@@ -21,7 +22,7 @@ internal static class ExpenseShared
             ? new DateTimeOffset(d.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero)
             : DateTimeOffset.UtcNow;
 
-        var cmd = new ReportExpense(userId, amount, occurredAt, description, ExpenseSource.Manual);
+        var cmd = new ReportExpense(userId, amount, occurredAt, description, source);
         ctx.AskShardAndReplyText(shard, userId, cmd, reply => reply switch
         {
             ExpenseAccepted a => TelegramReplies.ExpenseAccepted(a),
