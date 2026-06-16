@@ -212,6 +212,8 @@ public static class ApplicationServiceCollectionExtensions
         services.AddSingleton<ITelegramCommandHandler, TokensHandler>();
 
         services.AddSingleton<ITelegramCallbackHandler, CorrectionCallbackHandler>();
+        services.AddSingleton<NlpPendingCache>();
+        services.AddSingleton<ITelegramCallbackHandler, NlpClarifyCallbackHandler>();
     }
 
     private static void ConfigurePerNodeServices(AkkaConfigurationBuilder builder)
@@ -222,7 +224,8 @@ public static class ApplicationServiceCollectionExtensions
                 TelegramGatewayActor.CreateProps(
                     resolver.GetService<IOptions<UserDefaultsOptions>>(),
                     resolver.GetService<IEnumerable<ITelegramCommandHandler>>(),
-                    resolver.GetService<IEnumerable<ITelegramCallbackHandler>>()),
+                    resolver.GetService<IEnumerable<ITelegramCallbackHandler>>(),
+                    resolver.GetService<NlpPendingCache>()),
                 "telegram-gateway");
             registry.Register<TelegramGatewayActor>(gateway);
 

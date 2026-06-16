@@ -15,7 +15,8 @@ public sealed class TelegramGatewayActorCallbackTests : TestKit
         Sys.ActorOf(TelegramGatewayActor.CreateProps(
             Options.Create(new UserDefaultsOptions()),
             [],
-            callbackHandlers));
+            callbackHandlers,
+            new NlpPendingCache()));
 
     private static IncomingCallbackQuery MakeCallback(string data) =>
         new(UpdateId: 1, CallbackQueryId: "cq1", ChatId: 1000, TelegramId: 42,
