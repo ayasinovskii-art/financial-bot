@@ -100,6 +100,36 @@ public sealed class ImportConfirmCallbackHandlerTests : TestKit
     }
 
     [Fact]
+    public void Confirm_y_with_BulkExpensesRejected_publishes_CsvImportRejected()
+    {
+        var (gateway, cache, shardProbe) = Setup();
+        var ackProbe = CreateTestProbe();
+        var replyProbe = CreateTestProbe();
+        Sys.EventStream.Subscribe(ackProbe, typeof(OutgoingCallbackAck));
+        Sys.EventStream.Subscribe(replyProbe, typeof(OutgoingTelegramReply));
+
+        var userId = Guid.NewGuid();
+        var rows = new List<ParsedImportRow> { new(100m, new DateOnly(2026, 1, 1), "Кофе") };
+        cache.Set(userId, new ImportPendingEntry(ChatId, userId, rows, DateTimeOffset.UtcNow));
+
+        gateway.Tell(MakeCallback(CallbackPayload.Encode("csvimport", userId, "y")));
+
+        shardProbe.FishForMessage(
+            m => m is ShardEnvelope se && se.Message is BulkAddExpenses,
+            TimeSpan.FromSeconds(3));
+
+        const string rejectReason = "Нет активного периода.";
+        shardProbe.Reply(new BulkExpensesRejected(userId, rejectReason));
+
+        var ack = ackProbe.ExpectMsg<OutgoingCallbackAck>(TimeSpan.FromSeconds(5));
+        Assert.Null(ack.Text);
+
+        var reply = replyProbe.ExpectMsg<OutgoingTelegramReply>(TimeSpan.FromSeconds(5));
+        Assert.Equal(ChatId, reply.ChatId);
+        Assert.Equal(TelegramReplies.CsvImportRejected(rejectReason), reply.Text);
+    }
+
+    [Fact]
     public void Stale_session_replies_session_expired()
     {
         var (gateway, _, _) = Setup();

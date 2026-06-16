@@ -39,7 +39,8 @@ public sealed class TelegramGatewayActorStage7Tests : TestKit
 
     private (IActorRef gateway, TestProbe accessProbe) SetupGateway(
         ICsvImportParser? parser = null,
-        IEnumerable<ITelegramCommandHandler>? commandHandlers = null)
+        IEnumerable<ITelegramCommandHandler>? commandHandlers = null,
+        ITelegramBot? telegramBot = null)
     {
         var accessProbe = CreateTestProbe();
         var registry = ActorRegistry.For(Sys);
@@ -51,7 +52,7 @@ public sealed class TelegramGatewayActorStage7Tests : TestKit
             [],
             new NlpPendingCache(),
             new ImportPendingCache(),
-            new StubTelegramBot(),
+            telegramBot ?? new StubTelegramBot(),
             parser ?? new EmptyStubParser()));
 
         return (gateway, accessProbe);
@@ -113,6 +114,22 @@ public sealed class TelegramGatewayActorStage7Tests : TestKit
     }
 
     [Fact]
+    public void Download_failure_publishes_CsvImportDownloadFailed_reply()
+    {
+        var replyProbe = CreateTestProbe();
+        Sys.EventStream.Subscribe(replyProbe, typeof(OutgoingTelegramReply));
+
+        var (gateway, accessProbe) = SetupGateway(telegramBot: new FailingDownloadBot());
+
+        gateway.Tell(MakeDocumentUpdate());
+        AllowAccess(accessProbe);
+
+        var reply = replyProbe.ExpectMsg<OutgoingTelegramReply>(TimeSpan.FromSeconds(5));
+        Assert.Equal(ChatId, reply.ChatId);
+        Assert.Equal(TelegramReplies.CsvImportDownloadFailed(), reply.Text);
+    }
+
+    [Fact]
     public void Import_command_publishes_instruction_reply()
     {
         var replyProbe = CreateTestProbe();
@@ -125,6 +142,20 @@ public sealed class TelegramGatewayActorStage7Tests : TestKit
 
         var reply = replyProbe.ExpectMsg<OutgoingTelegramReply>(TimeSpan.FromSeconds(3));
         Assert.Equal(TelegramReplies.CsvImportInstruction(), reply.Text);
+    }
+
+    private sealed class FailingDownloadBot : ITelegramBot
+    {
+        public Task SendTextAsync(long chatId, string text, CancellationToken ct) => Task.CompletedTask;
+        public Task SendInlineKeyboardAsync(long chatId, string text, IReadOnlyList<IReadOnlyList<InlineButton>> rows, CancellationToken ct) => Task.CompletedTask;
+        public Task AnswerCallbackAsync(string callbackQueryId, string? text, CancellationToken ct) => Task.CompletedTask;
+        public Task SendPhotoAsync(long chatId, byte[] photo, string fileName, string? caption, CancellationToken ct) => Task.CompletedTask;
+        public Task SendDocumentAsync(long chatId, byte[] document, string fileName, string? caption, CancellationToken ct) => Task.CompletedTask;
+        public Task<byte[]> DownloadFileAsync(string fileId, CancellationToken ct) =>
+            Task.FromException<byte[]>(new System.Net.Http.HttpRequestException("Simulated download failure"));
+        public Task<TelegramPollResult> PollAsync(long offset, TimeSpan timeout, CancellationToken ct) => Task.FromResult(new TelegramPollResult([], [], offset));
+        public Task<bool> SetWebhookAsync(string url, CancellationToken ct) => Task.FromResult(true);
+        public Task DeleteWebhookAsync(CancellationToken ct) => Task.CompletedTask;
     }
 
     private sealed class StubTelegramBot : ITelegramBot
