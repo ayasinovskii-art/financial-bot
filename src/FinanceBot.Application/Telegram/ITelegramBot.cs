@@ -26,6 +26,9 @@ public interface ITelegramBot
     /// <summary>Отправить документ (файл) с опциональной подписью.</summary>
     Task SendDocumentAsync(long chatId, byte[] document, string fileName, string? caption, CancellationToken ct);
 
+    /// <summary>Скачать файл по fileId. Возвращает байты содержимого.</summary>
+    Task<byte[]> DownloadFileAsync(string fileId, CancellationToken ct);
+
     /// <summary>Получить пачку обновлений (long-polling). Возвращает offset следующего вызова.</summary>
     Task<TelegramPollResult> PollAsync(long offset, TimeSpan timeout, CancellationToken ct);
 

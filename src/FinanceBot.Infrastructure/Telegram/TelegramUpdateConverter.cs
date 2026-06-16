@@ -21,7 +21,10 @@ public static class TelegramUpdateConverter
                 FirstName: messageFrom.FirstName,
                 LastName: messageFrom.LastName,
                 Text: message.Text,
-                SentAt: new DateTimeOffset(message.Date, TimeSpan.Zero)), null);
+                SentAt: new DateTimeOffset(message.Date, TimeSpan.Zero),
+                DocumentFileId: message.Document?.FileId,
+                DocumentFileName: message.Document?.FileName,
+                DocumentMimeType: message.Document?.MimeType), null);
         }
 
         if (update.CallbackQuery is { Data: { } data, Message: { } cbMessage } cb)

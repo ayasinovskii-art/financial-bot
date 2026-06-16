@@ -4,6 +4,8 @@ using FinanceBot.Application.Actors.Telegram;
 using FinanceBot.Application.Actors.Telegram.Commands;
 using FinanceBot.Application.Actors.Telegram.Messages;
 using FinanceBot.Application.Configuration;
+using FinanceBot.Application.Csv;
+using FinanceBot.Application.Telegram;
 using Microsoft.Extensions.Options;
 using Xunit;
 
@@ -16,7 +18,28 @@ public sealed class TelegramGatewayActorCallbackTests : TestKit
             Options.Create(new UserDefaultsOptions()),
             [],
             callbackHandlers,
-            new NlpPendingCache()));
+            new NlpPendingCache(),
+            new ImportPendingCache(),
+            new StubTelegramBot(),
+            new StubCsvImportParser()));
+
+    private sealed class StubTelegramBot : ITelegramBot
+    {
+        public Task SendTextAsync(long chatId, string text, CancellationToken ct) => Task.CompletedTask;
+        public Task SendInlineKeyboardAsync(long chatId, string text, IReadOnlyList<IReadOnlyList<InlineButton>> rows, CancellationToken ct) => Task.CompletedTask;
+        public Task AnswerCallbackAsync(string callbackQueryId, string? text, CancellationToken ct) => Task.CompletedTask;
+        public Task SendPhotoAsync(long chatId, byte[] photo, string fileName, string? caption, CancellationToken ct) => Task.CompletedTask;
+        public Task SendDocumentAsync(long chatId, byte[] document, string fileName, string? caption, CancellationToken ct) => Task.CompletedTask;
+        public Task<byte[]> DownloadFileAsync(string fileId, CancellationToken ct) => Task.FromResult(Array.Empty<byte>());
+        public Task<TelegramPollResult> PollAsync(long offset, TimeSpan timeout, CancellationToken ct) => Task.FromResult(new TelegramPollResult([], [], offset));
+        public Task<bool> SetWebhookAsync(string url, CancellationToken ct) => Task.FromResult(true);
+        public Task DeleteWebhookAsync(CancellationToken ct) => Task.CompletedTask;
+    }
+
+    private sealed class StubCsvImportParser : ICsvImportParser
+    {
+        public CsvParseResult Parse(string csvText) => new([], 0);
+    }
 
     private static IncomingCallbackQuery MakeCallback(string data) =>
         new(UpdateId: 1, CallbackQueryId: "cq1", ChatId: 1000, TelegramId: 42,

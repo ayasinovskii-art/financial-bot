@@ -41,6 +41,8 @@ public sealed class UserActor : ReceivePersistentActor, IWithTimers
     private readonly ILoggingAdapter _log;
     private UserState _state;
     private long _eventsSinceSnapshot;
+    // Dedup set for CSV import: rebuilt from event journal on recovery (not persisted in snapshot).
+    private readonly HashSet<string> _expenseDedupKeys = new(StringComparer.Ordinal);
     private IActorRef _wakeupChild = null!;
     private IActorRef _reportChild = null!;
     private IActorRef _chartChild = null!;
@@ -94,6 +96,7 @@ public sealed class UserActor : ReceivePersistentActor, IWithTimers
         Command<AddGoal>(HandleAddGoal);
         Command<CompleteGoal>(HandleCompleteGoal);
         Command<GetUserGoals>(HandleGetUserGoals);
+        Command<BulkAddExpenses>(HandleBulkAddExpenses);
 
         Command<LinkUserChat>(HandleLinkUserChat);
         Command<Cancel>(_ => Sender.Tell(new CancelAcknowledged(_userId)));
@@ -425,10 +428,16 @@ public sealed class UserActor : ReceivePersistentActor, IWithTimers
 
     private void HandleCategorizationDeadline(CategorizationDeadline d)
     {
-        if (!_pendingCategorizationSenders.Remove(d.ExpenseId, out var pending))
+        _pendingCategorizationSenders.Remove(d.ExpenseId, out var pending);
+
+        if (pending is null)
         {
+            // Bulk-import expense: no waiting sender — apply fallback category silently.
+            if (_state.ActivePeriod?.PendingDescriptions.TryGetValue(d.ExpenseId, out var normalized) == true)
+                CompleteExpenseWithCategory(d.ExpenseId, normalized, Category.Other, ExpenseSource.Fallback, needsReview: false);
             return;
         }
+
         _log.Warning("Categorization deadline reached for expense {ExpenseId}; replying fallback.", d.ExpenseId);
         if (_state.ActivePeriod is { } period)
         {
@@ -612,6 +621,11 @@ public sealed class UserActor : ReceivePersistentActor, IWithTimers
 
     private void ApplyEvent(IDomainEvent evt)
     {
+        if (evt is ExpenseReported er)
+            _expenseDedupKeys.Add(MakeExpenseDedupKey(er.Amount, DateOnly.FromDateTime(er.OccurredAt.UtcDateTime), er.Description));
+        else if (evt is BudgetPeriodStarted or BudgetPeriodClosed)
+            _expenseDedupKeys.Clear();
+
         _state = evt switch
         {
             UserRegistered r => _state.WithRegistration(r),
@@ -630,6 +644,9 @@ public sealed class UserActor : ReceivePersistentActor, IWithTimers
             _ => _state
         };
     }
+
+    private static string MakeExpenseDedupKey(decimal amount, DateOnly date, string description)
+        => $"{amount}|{date:yyyy-MM-dd}|{description.Trim()}";
 
     private static string BuildClosedSummaryJson(ActivePeriod p)
     {
@@ -741,6 +758,87 @@ public sealed class UserActor : ReceivePersistentActor, IWithTimers
 
     private void HandleGetUserGoals(GetUserGoals _)
         => Sender.Tell(new UserGoalsList(_state.Goals));
+
+    private void HandleBulkAddExpenses(BulkAddExpenses cmd)
+    {
+        if (!_state.IsRegistered)
+        {
+            Sender.Tell(new BulkExpensesRejected(_userId, "Сначала зарегистрируйся через /start."));
+            return;
+        }
+        if (_state.ActivePeriod is null)
+        {
+            Sender.Tell(new BulkExpensesRejected(_userId, "Сначала зафиксируй доход через /income — нет активного периода."));
+            return;
+        }
+
+        var periodId = _state.ActivePeriod.PeriodId;
+        var occurredAt = DateTimeOffset.UtcNow;
+
+        var toAdd = new List<ExpenseReported>();
+        var skipped = 0;
+
+        foreach (var row in cmd.Rows)
+        {
+            var key = MakeExpenseDedupKey(row.Amount, row.Date, row.Description);
+            if (_expenseDedupKeys.Contains(key))
+            {
+                skipped++;
+                continue;
+            }
+            var description = string.IsNullOrWhiteSpace(row.Description) ? "(без описания)" : row.Description;
+            toAdd.Add(new ExpenseReported(
+                _userId,
+                Guid.NewGuid(),
+                periodId,
+                row.Amount,
+                new DateTimeOffset(row.Date.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero),
+                description,
+                ExpenseSource.CsvImport));
+        }
+
+        if (toAdd.Count == 0)
+        {
+            Sender.Tell(new BulkExpensesResult(_userId, 0, skipped));
+            return;
+        }
+
+        var sender = Sender;
+        var added = toAdd.Count;
+        var pending = toAdd.Count;
+
+        PersistAll(toAdd, persisted =>
+        {
+            ApplyEvent(persisted);
+
+            // Trigger async categorization for each expense (fire-and-forget — no pending sender in dict).
+            var normalized = NormalizedDescription.FromRaw(persisted.Description);
+            if (!normalized.IsEmpty && _state.CategoryMemory.TryGetValue(normalized.Value, out var memCategory))
+            {
+                CompleteExpenseWithCategory(persisted.ExpenseId, normalized, memCategory, ExpenseSource.Memory, needsReview: false);
+            }
+            else
+            {
+                var registry = ActorRegistry.For(Context.System);
+                if (registry.TryGet<CategorizerActorMarker>(out var categorizer))
+                {
+                    Timers.StartSingleTimer(CategorizationTimerKey(persisted.ExpenseId),
+                        new CategorizationDeadline(persisted.ExpenseId), CategorizationDeadlineDelay);
+                    categorizer.Tell(new CategorizeRequest(Guid.NewGuid(), _userId, persisted.ExpenseId, normalized));
+                }
+                else
+                {
+                    CompleteExpenseWithCategory(persisted.ExpenseId, normalized, Category.Other, ExpenseSource.Fallback, needsReview: false);
+                }
+            }
+
+            if (Interlocked.Decrement(ref pending) == 0)
+            {
+                MaybeSnapshot();
+                sender.Tell(new BulkExpensesResult(_userId, added, skipped));
+            }
+        });
+    }
 
     private void MaybeSnapshot()
     {

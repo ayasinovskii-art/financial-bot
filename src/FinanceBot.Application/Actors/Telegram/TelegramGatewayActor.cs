@@ -8,6 +8,8 @@ using FinanceBot.Application.Actors.Telegram.Commands.Handlers;
 using FinanceBot.Application.Actors.Telegram.Messages;
 using FinanceBot.Application.Actors.User;
 using FinanceBot.Application.Configuration;
+using FinanceBot.Application.Csv;
+using FinanceBot.Application.Telegram;
 using FinanceBot.Domain.Commands.User;
 using Microsoft.Extensions.Options;
 
@@ -30,19 +32,29 @@ public sealed partial class TelegramGatewayActor : ReceiveActor
     private readonly IReadOnlyList<ITelegramCallbackHandler> _callbackHandlers;
     private readonly Dictionary<long, (AccessDecision Decision, DateTimeOffset ExpiresAt)> _accessCache = new();
     private readonly NlpPendingCache _nlpPendingCache;
+    private readonly ImportPendingCache _importPendingCache;
+    private readonly ITelegramBot _telegramBot;
+    internal readonly ICsvImportParser _csvParser;
     private Func<TelegramCommandContext, bool>? _freeTextNlpInterceptor;
+    private Func<TelegramCommandContext, bool>? _documentInterceptor;
 
     public TelegramGatewayActor(
         IOptions<UserDefaultsOptions> defaults,
         IEnumerable<ITelegramCommandHandler> handlers,
         IEnumerable<ITelegramCallbackHandler> callbackHandlers,
-        NlpPendingCache nlpPendingCache)
+        NlpPendingCache nlpPendingCache,
+        ImportPendingCache importPendingCache,
+        ITelegramBot telegramBot,
+        ICsvImportParser csvParser)
     {
         _log = Context.GetLogger();
         _defaults = defaults?.Value ?? new UserDefaultsOptions();
         _handlers = handlers.ToDictionary(h => h.Kind);
         _callbackHandlers = callbackHandlers.ToList();
         _nlpPendingCache = nlpPendingCache;
+        _importPendingCache = importPendingCache;
+        _telegramBot = telegramBot;
+        _csvParser = csvParser;
 
         Receive<Ping>(_ => Sender.Tell(new Pong(Self.Path.ToStringWithoutAddress())));
 
@@ -57,18 +69,24 @@ public sealed partial class TelegramGatewayActor : ReceiveActor
         Receive<OutgoingCallbackAck>(ack => Context.System.EventStream.Publish(ack));
 
         WireStage6();
+        WireStage7();
 
         ReceiveAny(msg => _log.Debug("TelegramGatewayActor received unhandled {MessageType}", msg.GetType().Name));
     }
 
     partial void WireStage6();
+    partial void WireStage7();
 
     public static Props CreateProps(
         IOptions<UserDefaultsOptions> defaults,
         IEnumerable<ITelegramCommandHandler> handlers,
         IEnumerable<ITelegramCallbackHandler> callbackHandlers,
-        NlpPendingCache nlpPendingCache)
-        => Props.Create(() => new TelegramGatewayActor(defaults, handlers, callbackHandlers, nlpPendingCache));
+        NlpPendingCache nlpPendingCache,
+        ImportPendingCache importPendingCache,
+        ITelegramBot telegramBot,
+        ICsvImportParser csvParser)
+        => Props.Create(() => new TelegramGatewayActor(
+            defaults, handlers, callbackHandlers, nlpPendingCache, importPendingCache, telegramBot, csvParser));
 
     private void HandleIncomingUpdate(IncomingTelegramUpdate update)
     {
@@ -156,7 +174,10 @@ public sealed partial class TelegramGatewayActor : ReceiveActor
         if (parsed is null)
         {
             if (_freeTextNlpInterceptor?.Invoke(ctx) != true)
-                FreeTextHandler.Execute(ctx);
+            {
+                if (_documentInterceptor?.Invoke(ctx) != true)
+                    FreeTextHandler.Execute(ctx);
+            }
             return;
         }
 

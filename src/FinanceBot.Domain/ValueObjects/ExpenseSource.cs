@@ -12,7 +12,8 @@ public enum ExpenseSource
     Claude = 4,
     Fallback = 5,
     RecurringAuto = 6,
-    PlannedConfirmed = 7
+    PlannedConfirmed = 7,
+    CsvImport = 8
 }
 
 public static class ExpenseSourceExtensions
@@ -26,6 +27,7 @@ public static class ExpenseSourceExtensions
         ExpenseSource.Fallback => "fallback",
         ExpenseSource.RecurringAuto => "recurring-auto",
         ExpenseSource.PlannedConfirmed => "planned-confirmed",
+        ExpenseSource.CsvImport => "csv-import",
         _ => throw new ArgumentOutOfRangeException(nameof(source), source, null)
     };
 }

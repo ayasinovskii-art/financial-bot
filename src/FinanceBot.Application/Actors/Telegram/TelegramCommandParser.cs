@@ -57,6 +57,9 @@ public enum TelegramCommandKind
     // export: CSV-выгрузка трат периода
     Export = 98,
 
+    // import: инструкция по отправке CSV-файла
+    Import = 100,
+
     Unknown = 99
 }
 
@@ -116,6 +119,7 @@ public static class TelegramCommandParser
             "tokens" => TelegramCommandKind.Tokens,
             "stats" => TelegramCommandKind.Stats,
             "export" => TelegramCommandKind.Export,
+            "import" => TelegramCommandKind.Import,
             _ => TelegramCommandKind.Unknown
         };
 

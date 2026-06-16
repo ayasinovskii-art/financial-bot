@@ -89,3 +89,9 @@ public sealed record AddGoal(
 public sealed record CompleteGoal(
     Guid UserId,
     Guid GoalId) : IUserScopedCommand;
+
+/// <summary>Массово добавить траты из импорта (CSV). Дедупликация по Amount+Date+Description выполняется в UserActor.</summary>
+public sealed record BulkAddExpenses(
+    Guid UserId,
+    Guid PeriodId,
+    IReadOnlyList<BulkExpenseRow> Rows) : IUserScopedCommand;
