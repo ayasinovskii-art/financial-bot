@@ -74,6 +74,31 @@ public sealed class NlpExpenseParserTests
         Assert.Null(result);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-500)]
+    [InlineData(1_000_001)]
+    public void TryParseResponse_invalid_amount_returns_false(decimal amount)
+    {
+        var json = $$"""{"type":"expense","amount":{{amount}},"category":"Other","description":"test","confidence":0.9,"isFinancial":true}""";
+
+        var ok = NlpExpenseParser.TryParseResponse(json, out var result);
+
+        Assert.False(ok);
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void TryParseResponse_unknown_type_returns_false()
+    {
+        const string json = """{"type":"transfer","amount":500,"category":"Other","description":"test","confidence":0.9,"isFinancial":true}""";
+
+        var ok = NlpExpenseParser.TryParseResponse(json, out var result);
+
+        Assert.False(ok);
+        Assert.Null(result);
+    }
+
     [Fact]
     public void BuildClaudeRequest_uses_ExpenseParse_use_case()
     {

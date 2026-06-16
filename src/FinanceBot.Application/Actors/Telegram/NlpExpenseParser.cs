@@ -53,6 +53,8 @@ internal static class NlpExpenseParser
         """;
 
     public static ClaudeRequest BuildClaudeRequest(string text, Guid correlationId) =>
+        // Security: raw user text is passed as UserPrompt — inherent prompt injection surface;
+        // blast radius is limited to the authenticated user's own financial data (accepted risk).
         new(
             UseCase: ClaudeUseCase.ExpenseParse,
             SystemPrompt: SystemPrompt,
@@ -68,8 +70,14 @@ internal static class NlpExpenseParser
             using var doc = JsonDocument.Parse(json.Trim());
             var root = doc.RootElement;
 
-            var type = root.GetProperty("type").GetString() ?? "expense";
+            var type = root.GetProperty("type").GetString() ?? string.Empty;
+            if (type != "expense" && type != "income")
+                return false;
+
             var amount = root.GetProperty("amount").GetDecimal();
+            if (amount <= 0 || amount > 1_000_000)
+                return false;
+
             var category = root.GetProperty("category").GetString() ?? "Other";
             var description = root.GetProperty("description").GetString() ?? string.Empty;
             var confidence = root.GetProperty("confidence").GetDouble();
