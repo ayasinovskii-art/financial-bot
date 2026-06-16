@@ -132,4 +132,50 @@ public sealed class TelegramGatewayActorStage6Tests : TestKit
             TimeSpan.FromSeconds(3));
         Assert.IsType<ReportExpense>(envelope.Message);
     }
+
+    [Fact]
+    public void Text_with_amount_high_confidence_income_dispatches_ReportIncome_to_shard()
+    {
+        var (gateway, accessProbe, consultantProbe, shardProbe) = SetupGateway();
+
+        gateway.Tell(MakeUpdate("получил зарплату 50000"));
+        AllowAccess(accessProbe);
+
+        var askMsg = consultantProbe.ExpectMsg<ClaudeAskMessage>(TimeSpan.FromSeconds(3));
+
+        const string json = """{"type":"income","amount":50000.00,"category":"Other","description":"зарплата","confidence":0.97,"isFinancial":true}""";
+        gateway.Tell(new ClaudeOkReply(askMsg.Request.CorrelationId, json, 10, null, null));
+
+        var envelope = (ShardEnvelope)shardProbe.FishForMessage(
+            m => m is ShardEnvelope se && se.Message is ReportIncome,
+            TimeSpan.FromSeconds(3));
+        Assert.IsType<ReportIncome>(envelope.Message);
+    }
+
+    [Fact]
+    public void High_confidence_expense_after_shard_reply_publishes_OutgoingTelegramReply()
+    {
+        var (gateway, accessProbe, consultantProbe, shardProbe) = SetupGateway();
+        var replyProbe = CreateTestProbe();
+        Sys.EventStream.Subscribe(replyProbe, typeof(OutgoingTelegramReply));
+
+        gateway.Tell(MakeUpdate("пообедал на 700"));
+        AllowAccess(accessProbe);
+
+        var askMsg = consultantProbe.ExpectMsg<ClaudeAskMessage>(TimeSpan.FromSeconds(3));
+
+        const string json = """{"type":"expense","amount":700.00,"category":"DiningOut","description":"обед","confidence":0.95,"isFinancial":true}""";
+        gateway.Tell(new ClaudeOkReply(askMsg.Request.CorrelationId, json, 10, null, null));
+
+        var envelope = (ShardEnvelope)shardProbe.FishForMessage(
+            m => m is ShardEnvelope se && se.Message is ReportExpense,
+            TimeSpan.FromSeconds(3));
+        Assert.IsType<ReportExpense>(envelope.Message);
+
+        shardProbe.Reply(new ExpenseAccepted(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), 700m,
+            Category.DiningOut, Bucket.Fun, 0m, 0m, 0m, 25000m, 12500m, 12500m));
+
+        replyProbe.ExpectMsg<OutgoingTelegramReply>(TimeSpan.FromSeconds(5));
+    }
 }

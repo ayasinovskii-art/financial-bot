@@ -86,3 +86,14 @@ public sealed class NlpExpenseParserTests
         Assert.False(string.IsNullOrWhiteSpace(request.SystemPrompt));
     }
 }
+
+public sealed class TelegramRepliesNlpTests
+{
+    [Fact]
+    public void NlpClarifyIncome_returns_non_empty_text_with_amount()
+    {
+        var result = TelegramReplies.NlpClarifyIncome("зарплата", 50000m);
+        Assert.False(string.IsNullOrEmpty(result));
+        Assert.Contains("50000", result);
+    }
+}

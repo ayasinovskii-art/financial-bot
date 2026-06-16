@@ -93,4 +93,32 @@ public sealed class NlpClarifyCallbackHandlerTests : TestKit
         var ack = eventProbe.ExpectMsg<OutgoingCallbackAck>(TimeSpan.FromSeconds(5));
         Assert.Equal("Записано.", ack.Text);
     }
+
+    [Fact]
+    public void Cache_has_income_entry_shortArg_y_dispatches_ReportIncome_and_acks_recorded()
+    {
+        var shardProbe = CreateTestProbe();
+        Akka.Hosting.ActorRegistry.For(Sys).Register<UserShardMarker>(shardProbe.Ref);
+
+        var (gateway, cache) = CreateGateway();
+        var eventProbe = CreateTestProbe();
+        Sys.EventStream.Subscribe(eventProbe, typeof(OutgoingCallbackAck));
+
+        var userId = Guid.NewGuid();
+        var confirmationId = Guid.NewGuid();
+        cache.Add(confirmationId, new NlpPendingEntry(ChatId, userId, null,
+            new NlpParseResult("income", 50000m, "Other", "зарплата", 0.9, true),
+            DateTimeOffset.UtcNow));
+
+        gateway.Tell(MakeCallback(CallbackPayload.Encode("nlpc", confirmationId, "y")));
+
+        var envelope = shardProbe.ExpectMsg<ShardEnvelope>(TimeSpan.FromSeconds(3));
+        Assert.IsType<ReportIncome>(envelope.Message);
+
+        shardProbe.Reply(new IncomeAccepted(userId, Guid.NewGuid(), Guid.NewGuid(),
+            DateOnly.FromDateTime(DateTime.UtcNow), 50000m, 25000m, 12500m, 12500m));
+
+        var ack = eventProbe.ExpectMsg<OutgoingCallbackAck>(TimeSpan.FromSeconds(5));
+        Assert.Equal("Записано.", ack.Text);
+    }
 }
