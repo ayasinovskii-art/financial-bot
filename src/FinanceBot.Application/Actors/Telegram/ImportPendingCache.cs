@@ -20,8 +20,18 @@ public sealed class ImportPendingCache
         _cache[key] = entry;
     }
 
-    public bool TryGet(Guid key, out ImportPendingEntry? entry) =>
-        _cache.TryGetValue(key, out entry);
+    public bool TryGet(Guid key, out ImportPendingEntry? entry)
+    {
+        if (!_cache.TryGetValue(key, out entry))
+            return false;
+        if (DateTimeOffset.UtcNow > entry!.CreatedAt + Ttl)
+        {
+            _cache.TryRemove(key, out _);
+            entry = null;
+            return false;
+        }
+        return true;
+    }
 
     public bool TryRemove(Guid key, out ImportPendingEntry? entry) =>
         _cache.TryRemove(key, out entry);

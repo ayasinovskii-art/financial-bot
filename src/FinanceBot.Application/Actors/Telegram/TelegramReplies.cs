@@ -207,6 +207,12 @@ public static class TelegramReplies
     public static string NlpRecordedByAI(string category)
         => $"Записал. Определил категорию: {category}.";
 
+    public static string CsvImportUnknownCallback() => "Не понял callback.";
+    public static string CsvImportUnknownAnswer() => "Не понял ответ.";
+    public static string CsvImportInternalError() => "Внутренняя ошибка.";
+    public static string CsvImportRejected(string reason) => $"Не удалось импортировать: {reason}";
+    public static string CsvImportUnexpectedResponse() => "Не понял ответа от UserActor.";
+
     public static string CsvImportInstruction()
         => "Отправь CSV-файл выписки Тинькофф (файл с расширением .csv), и я распознаю траты.";
 

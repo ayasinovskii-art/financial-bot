@@ -23,7 +23,7 @@ public sealed class ImportConfirmCallbackHandler : ITelegramCallbackHandler
     {
         if (!CallbackPayload.TryDecode(ctx.Callback.Data, out _, out var correlationId, out var shortArg))
         {
-            ctx.Self.Tell(new OutgoingCallbackAck(ctx.Callback.CallbackQueryId, "Не понял callback."), ActorRefs.NoSender);
+            ctx.Self.Tell(new OutgoingCallbackAck(ctx.Callback.CallbackQueryId, TelegramReplies.CsvImportUnknownCallback()), ActorRefs.NoSender);
             return;
         }
 
@@ -38,7 +38,7 @@ public sealed class ImportConfirmCallbackHandler : ITelegramCallbackHandler
         if (shortArg != "y" || !_cache.TryRemove(correlationId, out var entry) || entry is null)
         {
             var msg = shortArg != "y"
-                ? "Не понял ответ."
+                ? TelegramReplies.CsvImportUnknownAnswer()
                 : TelegramReplies.CsvImportSessionExpired();
             ctx.Self.Tell(new OutgoingCallbackAck(ctx.Callback.CallbackQueryId, msg), ActorRefs.NoSender);
             return;
@@ -47,7 +47,7 @@ public sealed class ImportConfirmCallbackHandler : ITelegramCallbackHandler
         var registry = ActorRegistry.For(ctx.System);
         if (!registry.TryGet<UserShardMarker>(out var shard))
         {
-            ctx.Self.Tell(new OutgoingCallbackAck(ctx.Callback.CallbackQueryId, "Внутренняя ошибка."), ActorRefs.NoSender);
+            ctx.Self.Tell(new OutgoingCallbackAck(ctx.Callback.CallbackQueryId, TelegramReplies.CsvImportInternalError()), ActorRefs.NoSender);
             return;
         }
 
@@ -71,7 +71,7 @@ public sealed class ImportConfirmCallbackHandler : ITelegramCallbackHandler
 
         if (!t.IsCompletedSuccessfully)
         {
-            outgoing.Add(new OutgoingCallbackAck(callbackId, "Внутренняя ошибка."));
+            outgoing.Add(new OutgoingCallbackAck(callbackId, TelegramReplies.CsvImportInternalError()));
             return new TelegramCommandCompleted(outgoing);
         }
 
@@ -83,10 +83,10 @@ public sealed class ImportConfirmCallbackHandler : ITelegramCallbackHandler
                 outgoing.Add(new OutgoingTelegramReply(chatId, TelegramReplies.CsvImportSuccess(r.Added, r.Skipped)));
                 break;
             case BulkExpensesRejected rej:
-                outgoing.Add(new OutgoingTelegramReply(chatId, $"Не удалось импортировать: {rej.Reason}"));
+                outgoing.Add(new OutgoingTelegramReply(chatId, TelegramReplies.CsvImportRejected(rej.Reason)));
                 break;
             default:
-                outgoing.Add(new OutgoingTelegramReply(chatId, "Не понял ответа от UserActor."));
+                outgoing.Add(new OutgoingTelegramReply(chatId, TelegramReplies.CsvImportUnexpectedResponse()));
                 break;
         }
 
