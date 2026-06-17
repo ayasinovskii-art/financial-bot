@@ -11,6 +11,6 @@ public interface IDeleteListReader
 {
     Task<IReadOnlyList<DeleteExpenseRow>> GetLastExpensesAsync(Guid userId, int skip, int take, CancellationToken ct);
     Task<IReadOnlyList<DeleteIncomeRow>> GetLastIncomesAsync(Guid userId, int skip, int take, CancellationToken ct);
-    Task<DeleteExpenseRow?> GetExpenseAsync(Guid id, CancellationToken ct);
-    Task<DeleteIncomeRow?> GetIncomeAsync(Guid id, CancellationToken ct);
+    Task<DeleteExpenseRow?> GetExpenseAsync(Guid userId, Guid id, CancellationToken ct);
+    Task<DeleteIncomeRow?> GetIncomeAsync(Guid userId, Guid id, CancellationToken ct);
 }

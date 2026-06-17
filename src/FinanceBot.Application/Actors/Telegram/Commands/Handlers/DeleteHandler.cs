@@ -257,11 +257,12 @@ public sealed class DeleteCallbackHandler : ITelegramCallbackHandler
         var timeout = ctx.AskTimeout;
         var system = ctx.System;
         var reader = _reader;
+        var callbackUserId = UserIdFromTelegramId.Resolve(telegramId);
 
         switch (typeChar)
         {
             case "e":
-                reader.GetExpenseAsync(entityId, CancellationToken.None)
+                reader.GetExpenseAsync(callbackUserId, entityId, CancellationToken.None)
                     .ContinueWith(t =>
                     {
                         var outgoing = new List<object> { new OutgoingCallbackAck(callbackId, null) };
@@ -281,7 +282,7 @@ public sealed class DeleteCallbackHandler : ITelegramCallbackHandler
                 break;
 
             case "i":
-                reader.GetIncomeAsync(entityId, CancellationToken.None)
+                reader.GetIncomeAsync(callbackUserId, entityId, CancellationToken.None)
                     .ContinueWith(t =>
                     {
                         var outgoing = new List<object> { new OutgoingCallbackAck(callbackId, null) };

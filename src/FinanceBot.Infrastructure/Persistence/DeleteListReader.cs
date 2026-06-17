@@ -33,22 +33,22 @@ public sealed class DeleteListReader(IDbContextFactory<AppDbContext> dbFactory) 
             .ToListAsync(ct);
     }
 
-    public async Task<DeleteExpenseRow?> GetExpenseAsync(Guid id, CancellationToken ct)
+    public async Task<DeleteExpenseRow?> GetExpenseAsync(Guid userId, Guid id, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         return await db.Expenses
             .AsNoTracking()
-            .Where(e => e.ExpenseId == id)
+            .Where(e => e.ExpenseId == id && e.UserId == userId)
             .Select(e => new DeleteExpenseRow(e.ExpenseId, e.Amount, e.Description, e.OccurredAt))
             .FirstOrDefaultAsync(ct);
     }
 
-    public async Task<DeleteIncomeRow?> GetIncomeAsync(Guid id, CancellationToken ct)
+    public async Task<DeleteIncomeRow?> GetIncomeAsync(Guid userId, Guid id, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         return await db.Incomes
             .AsNoTracking()
-            .Where(i => i.IncomeId == id)
+            .Where(i => i.IncomeId == id && i.UserId == userId)
             .Select(i => new DeleteIncomeRow(i.IncomeId, i.Amount, i.Description, i.OccurredAt))
             .FirstOrDefaultAsync(ct);
     }
