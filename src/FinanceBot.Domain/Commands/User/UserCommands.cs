@@ -95,3 +95,13 @@ public sealed record BulkAddExpenses(
     Guid UserId,
     Guid PeriodId,
     IReadOnlyList<BulkExpenseRow> Rows) : IUserScopedCommand;
+
+/// <summary>Удалить доход (компенсирующее событие). Персистирует IncomeDeleted.</summary>
+public sealed record DeleteIncome(
+    Guid UserId,
+    Guid IncomeId) : IUserScopedCommand;
+
+/// <summary>Удалить цель. Персистирует GoalRemoved.</summary>
+public sealed record RemoveGoal(
+    Guid UserId,
+    Guid GoalId) : IUserScopedCommand;

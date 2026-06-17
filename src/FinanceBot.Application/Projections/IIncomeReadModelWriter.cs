@@ -12,4 +12,6 @@ public interface IIncomeReadModelWriter
         string? description,
         DateTimeOffset createdAt,
         CancellationToken ct);
+
+    Task DeleteAsync(Guid userId, Guid incomeId, CancellationToken ct);
 }

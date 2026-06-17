@@ -15,6 +15,7 @@ public sealed class IncomeProjection(IProjectionOffsetStore offsetStore, IIncome
     {
         IncomeReported i => writer.InsertAsync(
             i.IncomeId, i.UserId, i.PeriodId, i.Amount, i.OccurredAt, i.Description, DateTimeOffset.UtcNow, ct),
+        IncomeDeleted d => writer.DeleteAsync(d.UserId, d.IncomeId, ct),
         _ => Task.CompletedTask
     };
 }

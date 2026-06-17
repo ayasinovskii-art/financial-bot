@@ -16,3 +16,10 @@ public sealed record GoalCompleted(
     Guid GoalId,
     DateTimeOffset OccurredAt,
     int EventVersion = 1) : IUserScopedEvent;
+
+/// <summary>Удаление цели (компенсирующее событие).</summary>
+public sealed record GoalRemoved(
+    Guid UserId,
+    Guid GoalId,
+    DateTimeOffset OccurredAt,
+    int EventVersion = 1) : IUserScopedEvent;

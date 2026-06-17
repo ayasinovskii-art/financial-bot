@@ -220,6 +220,12 @@ public static class ApplicationServiceCollectionExtensions
         services.AddSingleton<ImportPendingCache>();
         services.AddSingleton<ITelegramCallbackHandler, ImportConfirmCallbackHandler>();
         services.AddSingleton<ITelegramCommandHandler, ImportCommandHandler>();
+
+        services.AddSingleton<ITelegramCommandHandler, DeleteHandler>();
+        services.AddSingleton<ITelegramCallbackHandler, DeleteCallbackHandler>();
+        services.AddSingleton<ITelegramCallbackHandler, DeleteMoreCallbackHandler>();
+        services.AddSingleton<ITelegramCallbackHandler, DeleteConfirmCallbackHandler>();
+        services.AddSingleton<ITelegramCallbackHandler, DeleteCancelCallbackHandler>();
     }
 
     private static void ConfigurePerNodeServices(AkkaConfigurationBuilder builder)

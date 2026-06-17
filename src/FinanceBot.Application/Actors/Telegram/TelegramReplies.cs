@@ -239,6 +239,35 @@ public static class TelegramReplies
     public static string CsvImportEmptyFile()
         => "Файл не содержит распознанных трат (нет строк со статусом ОК, валютой RUB и отрицательной суммой).";
 
+    public static string DeleteListHeader(string type) => type switch
+    {
+        "expense" => "Последние расходы:",
+        "income" => "Последние доходы:",
+        "goal" => "Активные цели:",
+        _ => "Последние записи:"
+    };
+
+    public static string DeleteConfirmPrompt(string description, decimal amount, DateTimeOffset date)
+        => $"Удалить «{description} {Format(amount)} ₽» от {date:dd.MM}?";
+
+    public static string DeleteConfirmGoalPrompt(string description)
+        => $"Удалить цель «{description}»?";
+
+    public static string DeleteDone() => "Удалено.";
+
+    public static string DeleteCancelled() => "Отменено.";
+
+    public static string DeleteEmpty(string type) => type switch
+    {
+        "expense" => "Нет расходов для удаления.",
+        "income" => "Нет доходов для удаления.",
+        "goal" => "Нет активных целей для удаления.",
+        _ => "Нет записей для удаления."
+    };
+
+    public static string DeleteUsage()
+        => "Команды: `/delete expense`, `/delete income`, `/delete goal` (или `/delete` — все типы).";
+
     private static string Format(decimal value) => value.ToString("0.00", CultureInfo.InvariantCulture);
 
     public static string WhitelistList(WhitelistEntry[] entries, long[] admins)

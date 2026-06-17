@@ -60,6 +60,9 @@ public enum TelegramCommandKind
     // import: инструкция по отправке CSV-файла
     Import = 100,
 
+    // delete: удаление трат/доходов/целей
+    Delete = 101,
+
     Unknown = 99
 }
 
@@ -120,6 +123,7 @@ public static class TelegramCommandParser
             "stats" => TelegramCommandKind.Stats,
             "export" => TelegramCommandKind.Export,
             "import" => TelegramCommandKind.Import,
+            "delete" => TelegramCommandKind.Delete,
             _ => TelegramCommandKind.Unknown
         };
 
