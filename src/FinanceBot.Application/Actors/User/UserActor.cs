@@ -15,6 +15,7 @@ using FinanceBot.Domain.Events;
 using FinanceBot.Domain.Events.Budget;
 using FinanceBot.Domain.Events.Expense;
 using FinanceBot.Domain.Events.Goal;
+using FinanceBot.Domain.Events.Import;
 using FinanceBot.Domain.Events.Income;
 using FinanceBot.Domain.Events.Recurring;
 using FinanceBot.Domain.Events.Scheduling;
@@ -69,6 +70,7 @@ public sealed class UserActor : ReceivePersistentActor, IWithTimers
         Recover<BudgetPeriodClosed>(ApplyEvent);
         Recover<GoalAdded>(ApplyEvent);
         Recover<GoalCompleted>(ApplyEvent);
+        Recover<StatementImported>(_ => { }); // summary-only event, состояние не меняет
         Recover<SnapshotOffer>(offer =>
         {
             if (offer.Snapshot is UserState snap)
@@ -92,6 +94,10 @@ public sealed class UserActor : ReceivePersistentActor, IWithTimers
         Command<AddGoal>(HandleAddGoal);
         Command<CompleteGoal>(HandleCompleteGoal);
         Command<GetUserGoals>(HandleGetUserGoals);
+        Command<ProposeStatementImport>(HandleProposeStatementImport);
+        Command<ConfirmStatementImport>(HandleConfirmStatementImport);
+        Command<CancelStatementImport>(HandleCancelStatementImport);
+        Command<GetPendingStatementImport>(HandleGetPendingStatementImport);
 
         Command<LinkUserChat>(HandleLinkUserChat);
         Command<Cancel>(_ => Sender.Tell(new CancelAcknowledged(_userId)));
@@ -348,6 +354,11 @@ public sealed class UserActor : ReceivePersistentActor, IWithTimers
     private readonly Dictionary<Guid, PendingCategorization> _pendingCategorizationSenders = new();
 
     private sealed record PendingCategorization(IActorRef Sender, decimal Amount);
+
+    // Transient pending-предложение импорта (НЕ персистится — диалог подтверждения).
+    private (Guid ProposalId, IReadOnlyList<ImportedTransaction> Transactions)? _pendingImport;
+    // Best-effort dedup в пределах жизни актора (сбрасывается при рестарте).
+    private readonly HashSet<string> _recentImportSignatures = new(StringComparer.Ordinal);
 
     private void HandleReportExpense(ReportExpense cmd)
     {
@@ -727,6 +738,161 @@ public sealed class UserActor : ReceivePersistentActor, IWithTimers
 
     private void HandleGetUserGoals(GetUserGoals _)
         => Sender.Tell(new UserGoalsList(_state.Goals));
+
+    // ============================================================================================
+    // Импорт выписки (скриншот → распознанные транзакции → подтверждение → массовая фиксация).
+    // Категоризация — синхронная (memory / fallback-needs-review), без async CategorizerActor.
+    // ============================================================================================
+
+    private void HandleProposeStatementImport(ProposeStatementImport cmd)
+    {
+        if (!_state.IsRegistered)
+        {
+            Sender.Tell(new StatementImportRejected("Сначала зарегистрируйся через /start."));
+            return;
+        }
+        if (cmd.Transactions.Count == 0)
+        {
+            Sender.Tell(new StatementImportRejected("Не нашёл транзакций для импорта."));
+            return;
+        }
+
+        _pendingImport = (cmd.ProposalId, cmd.Transactions);
+
+        var expenseCount = cmd.Transactions.Count(t => t.Kind == TransactionKind.Expense);
+        var incomeCount = cmd.Transactions.Count - expenseCount;
+        var expenseTotal = cmd.Transactions.Where(t => t.Kind == TransactionKind.Expense).Sum(t => t.Amount);
+        var incomeTotal = cmd.Transactions.Where(t => t.Kind == TransactionKind.Income).Sum(t => t.Amount);
+
+        Sender.Tell(new StatementImportProposed(
+            cmd.ProposalId, cmd.Transactions.Count, expenseCount, incomeCount, expenseTotal, incomeTotal));
+    }
+
+    private void HandleGetPendingStatementImport(GetPendingStatementImport _)
+    {
+        if (_pendingImport is { } pending)
+        {
+            Sender.Tell(new StatementImportList(pending.ProposalId, pending.Transactions));
+            return;
+        }
+        Sender.Tell(new StatementImportList(Guid.Empty, Array.Empty<ImportedTransaction>()));
+    }
+
+    private void HandleCancelStatementImport(CancelStatementImport _)
+    {
+        _pendingImport = null;
+        Sender.Tell(new StatementImportCancelled());
+    }
+
+    private void HandleConfirmStatementImport(ConfirmStatementImport cmd)
+    {
+        if (_pendingImport is not { } pending || pending.ProposalId != cmd.ProposalId)
+        {
+            Sender.Tell(new StatementImportRejected("Этот импорт уже неактуален. Пришли скриншот заново."));
+            return;
+        }
+        if (_state.ActivePeriod is null)
+        {
+            _pendingImport = null;
+            Sender.Tell(new StatementImportRejected("Сначала зафиксируй доход через /income — нет активного периода."));
+            return;
+        }
+
+        var transactions = pending.Transactions;
+        _pendingImport = null;
+
+        // Dedup: внутри пачки + best-effort против ранее импортированных в этой сессии.
+        var skipped = 0;
+        var batchSeen = new HashSet<string>(StringComparer.Ordinal);
+        var toImport = new List<ImportedTransaction>(transactions.Count);
+        foreach (var t in transactions)
+        {
+            var sig = ImportSignature(t);
+            if (!batchSeen.Add(sig) || _recentImportSignatures.Contains(sig))
+            {
+                skipped++;
+                continue;
+            }
+            toImport.Add(t);
+        }
+
+        var periodId = _state.ActivePeriod.PeriodId;
+        var occurredBase = DateTimeOffset.UtcNow;
+        var events = new List<IDomainEvent>(toImport.Count * 2 + 2);
+        decimal expenseTotal = 0m, incomeTotal = 0m;
+        var imported = 0;
+
+        // Доходы — расширяют активный период (по образцу HandleReportIncome, ветка «добавить в период»).
+        var incomes = toImport.Where(t => t.Kind == TransactionKind.Income).ToList();
+        if (incomes.Count > 0)
+        {
+            var ratios = ParseAllocationOrDefault(_state.Settings.GetValueOrDefault(SettingsKey.Allocation.ToWireName()));
+            var runningTotal = _state.ActivePeriod.TotalIncome;
+            foreach (var inc in incomes)
+            {
+                runningTotal += inc.Amount;
+                events.Add(new IncomeReported(_userId, Guid.NewGuid(), periodId, inc.Amount, ToOccurredAt(inc.Date), inc.Description));
+                _recentImportSignatures.Add(ImportSignature(inc));
+                incomeTotal += inc.Amount;
+                imported++;
+            }
+            var (essentials, fun, deposit) = ratios.ApplyTo(runningTotal);
+            events.Add(new BudgetAllocated(_userId, periodId, runningTotal, essentials, fun, deposit, occurredBase));
+        }
+
+        // Траты — ExpenseReported + синхронная категоризация (memory / fallback-needs-review).
+        foreach (var exp in toImport.Where(t => t.Kind == TransactionKind.Expense))
+        {
+            var expenseId = Guid.NewGuid();
+            var description = string.IsNullOrWhiteSpace(exp.Description) ? "(без описания)" : exp.Description;
+            events.Add(new ExpenseReported(_userId, expenseId, periodId, exp.Amount, ToOccurredAt(exp.Date), description, ExpenseSource.Import));
+
+            var normalized = NormalizedDescription.FromRaw(description);
+            if (!normalized.IsEmpty && _state.CategoryMemory.TryGetValue(normalized.Value, out var memCategory))
+            {
+                events.Add(new ExpenseCategorizedAutomatically(_userId, expenseId, memCategory, ExpenseSource.Memory, NeedsReview: false, normalized, occurredBase));
+            }
+            else
+            {
+                events.Add(new ExpenseCategorizedAutomatically(_userId, expenseId, Category.Other, ExpenseSource.Fallback, NeedsReview: true, normalized, occurredBase));
+            }
+
+            _recentImportSignatures.Add(ImportSignature(exp));
+            expenseTotal += exp.Amount;
+            imported++;
+        }
+
+        var sender = Sender;
+        if (imported == 0)
+        {
+            sender.Tell(new StatementImportCompleted(0, skipped, 0, 0m, 0m));
+            return;
+        }
+
+        events.Add(new StatementImported(_userId, imported, skipped, 0, expenseTotal, incomeTotal, occurredBase));
+
+        var pendingCount = events.Count;
+        var capturedExpenseTotal = expenseTotal;
+        var capturedIncomeTotal = incomeTotal;
+        var capturedImported = imported;
+        var capturedSkipped = skipped;
+        PersistAll(events, persisted =>
+        {
+            ApplyEvent(persisted);
+            if (Interlocked.Decrement(ref pendingCount) == 0)
+            {
+                MaybeSnapshot();
+                sender.Tell(new StatementImportCompleted(
+                    capturedImported, capturedSkipped, 0, capturedExpenseTotal, capturedIncomeTotal));
+            }
+        });
+    }
+
+    private static string ImportSignature(ImportedTransaction t)
+        => $"{t.Date:yyyy-MM-dd}|{t.Amount}|{t.Kind}|{t.Description.Trim().ToLowerInvariant()}";
+
+    private static DateTimeOffset ToOccurredAt(DateOnly date)
+        => new(date.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
 
     private void MaybeSnapshot()
     {

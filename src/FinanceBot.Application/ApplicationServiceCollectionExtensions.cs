@@ -9,6 +9,7 @@ using FinanceBot.Application.Actors.Categorizer;
 using FinanceBot.Application.Actors.Charts;
 using FinanceBot.Application.Actors.Claude;
 using FinanceBot.Application.Actors.Scheduler;
+using FinanceBot.Application.Actors.StatementImport;
 using FinanceBot.Application.Actors.Telegram;
 using FinanceBot.Application.Actors.Telegram.Commands;
 using FinanceBot.Application.Actors.Telegram.Commands.Handlers;
@@ -18,6 +19,7 @@ using FinanceBot.Application.Actors.UserTemplates;
 using FinanceBot.Application.Configuration;
 using FinanceBot.Application.Projections;
 using FinanceBot.Application.Scheduling;
+using FinanceBot.Application.Telegram;
 using FinanceBot.Domain.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -212,6 +214,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddSingleton<ITelegramCommandHandler, TokensHandler>();
 
         services.AddSingleton<ITelegramCallbackHandler, CorrectionCallbackHandler>();
+        services.AddSingleton<ITelegramCallbackHandler, StatementImportCallbackHandler>();
     }
 
     private static void ConfigurePerNodeServices(AkkaConfigurationBuilder builder)
@@ -242,6 +245,13 @@ public static class ApplicationServiceCollectionExtensions
                     workers: 4),
                 "chart-renderer-pool");
             registry.Register<ChartRendererPoolMarker>(chartPool);
+
+            var statementImport = system.ActorOf(
+                StatementImportActor.CreateProps(
+                    resolver.GetService<ITelegramBot>(),
+                    resolver.GetService<IStatementExtractor>()),
+                "statement-import");
+            registry.Register<StatementImportActorMarker>(statementImport);
         });
     }
 }

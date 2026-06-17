@@ -82,6 +82,9 @@ public static class InfrastructureServiceCollectionExtensions
             http.Timeout = TimeSpan.FromSeconds(60);
         });
 
+        // Распознавание выписок (Claude Vision поверх IClaudeClient).
+        services.AddSingleton<IStatementExtractor, ClaudeStatementExtractor>();
+
         services.AddOptions<WorkdayCalendarOptions>()
             .Bind(configuration.GetSection(WorkdayCalendarOptions.SectionName))
             .ValidateOnStart();

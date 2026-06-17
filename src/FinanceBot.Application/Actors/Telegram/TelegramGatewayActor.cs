@@ -3,6 +3,7 @@ using Akka.Event;
 using Akka.Hosting;
 using FinanceBot.Application.Actors.AccessControl;
 using FinanceBot.Application.Actors.Common;
+using FinanceBot.Application.Actors.StatementImport;
 using FinanceBot.Application.Actors.Telegram.Commands;
 using FinanceBot.Application.Actors.Telegram.Commands.Handlers;
 using FinanceBot.Application.Actors.Telegram.Messages;
@@ -44,7 +45,9 @@ public sealed class TelegramGatewayActor : ReceiveActor
 
         Receive<IncomingTelegramUpdate>(HandleIncomingUpdate);
         Receive<IncomingCallbackQuery>(HandleIncomingCallback);
+        Receive<IncomingTelegramFile>(HandleIncomingFile);
         Receive<AccessCheckResult>(OnAccessCheckResult);
+        Receive<FileAccessCheckResult>(OnFileAccessCheckResult);
 
         Receive<TelegramCommandCompleted>(OnCommandCompleted);
 
@@ -119,15 +122,85 @@ public sealed class TelegramGatewayActor : ReceiveActor
         }
     }
 
-    private void LinkChat(IncomingTelegramUpdate update)
+    private void LinkChat(IncomingTelegramUpdate update) => LinkChatById(update.TelegramId, update.ChatId);
+
+    private void LinkChatById(long telegramId, long chatId)
     {
         var registry = ActorRegistry.For(Context.System);
         if (!registry.TryGet<UserShardMarker>(out var userShard))
         {
             return;
         }
-        var userId = UserIdFromTelegramId.Resolve(update.TelegramId);
-        userShard.Tell(new ShardEnvelope(userId.ToString("N"), new LinkUserChat(userId, update.ChatId)));
+        var userId = UserIdFromTelegramId.Resolve(telegramId);
+        userShard.Tell(new ShardEnvelope(userId.ToString("N"), new LinkUserChat(userId, chatId)));
+    }
+
+    private void HandleIncomingFile(IncomingTelegramFile file)
+    {
+        _log.Debug("Incoming file {UpdateId} kind={Kind} from telegramId={TelegramId}",
+            file.UpdateId, file.Kind, file.TelegramId);
+
+        var now = DateTimeOffset.UtcNow;
+        if (_accessCache.TryGetValue(file.TelegramId, out var cached) && cached.ExpiresAt > now)
+        {
+            RouteFile(file, cached.Decision);
+            return;
+        }
+
+        var registry = ActorRegistry.For(Context.System);
+        if (!registry.TryGet<AccessControlSingletonMarker>(out var accessControl))
+        {
+            _log.Warning("AccessControlActor not available; dropping file {UpdateId}.", file.UpdateId);
+            return;
+        }
+
+        var self = Self;
+        accessControl
+            .Ask<AccessDecision>(new Domain.Commands.AccessControl.IsAllowed(file.TelegramId), AskTimeout)
+            .ContinueWith(t => new FileAccessCheckResult(file,
+                t.IsCompletedSuccessfully ? t.Result : null,
+                t.IsFaulted ? t.Exception : null))
+            .PipeTo(self);
+    }
+
+    private void OnFileAccessCheckResult(FileAccessCheckResult msg)
+    {
+        if (msg.Exception is not null)
+        {
+            _log.Error(msg.Exception, "Access check failed for telegramId={TelegramId}", msg.File.TelegramId);
+            Self.Tell(new OutgoingTelegramReply(msg.File.ChatId, "Внутренняя ошибка. Попробуй позже."));
+            return;
+        }
+
+        if (msg.Decision is not null)
+        {
+            _accessCache[msg.File.TelegramId] = (msg.Decision, DateTimeOffset.UtcNow + AccessCacheTtl);
+        }
+
+        RouteFile(msg.File, msg.Decision);
+    }
+
+    private void RouteFile(IncomingTelegramFile file, AccessDecision? decision)
+    {
+        switch (decision)
+        {
+            case AccessDecision.Denied:
+                Self.Tell(new OutgoingTelegramReply(file.ChatId, TelegramReplies.AccessDenied(file.TelegramId)));
+                return;
+
+            case AccessDecision.Allowed:
+                LinkChatById(file.TelegramId, file.ChatId);
+                var registry = ActorRegistry.For(Context.System);
+                if (registry.TryGet<StatementImportActorMarker>(out var importActor))
+                {
+                    importActor.Tell(file);
+                }
+                else
+                {
+                    Self.Tell(new OutgoingTelegramReply(file.ChatId, "Импорт выписок временно недоступен."));
+                }
+                return;
+        }
     }
 
     private void Dispatch(IncomingTelegramUpdate update, ParsedTelegramCommand? parsed, AccessDecision.Allowed allowed)
@@ -191,6 +264,11 @@ public sealed class TelegramGatewayActor : ReceiveActor
     private sealed record AccessCheckResult(
         IncomingTelegramUpdate Update,
         ParsedTelegramCommand? Parsed,
+        AccessDecision? Decision,
+        AggregateException? Exception);
+
+    private sealed record FileAccessCheckResult(
+        IncomingTelegramFile File,
         AccessDecision? Decision,
         AggregateException? Exception);
 }
