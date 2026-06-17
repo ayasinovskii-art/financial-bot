@@ -341,6 +341,46 @@ public sealed class DeleteHandlerTests : TestKit
         completed.Outgoing.OfType<OutgoingInlineKeyboard>().Should().ContainSingle();
     }
 
+    [Fact]
+    public void DeleteMoreCallbackHandler_execute_goal_returns_inline_keyboard()
+    {
+        var shardProbe = CreateTestProbe();
+        Akka.Hosting.ActorRegistry.For(Sys).Register<UserShardMarker>(shardProbe.Ref);
+
+        var goalId = Guid.NewGuid();
+        var reader = new FakeDeleteListReader();
+        var ctx = MakeCallbackCtx(CallbackPayload.Encode("delm", Guid.Empty, "g:0"));
+
+        new DeleteMoreCallbackHandler(reader).Execute(ctx);
+
+        var envelope = shardProbe.ExpectMsg<ShardEnvelope>(TimeSpan.FromSeconds(3));
+        envelope.Message.Should().BeOfType<GetUserGoals>();
+        shardProbe.Reply(new UserGoalsList([new GoalState(goalId, "Отпуск", null, null, IsCompleted: false)]));
+
+        var completed = ExpectMsg<TelegramCommandCompleted>(TimeSpan.FromSeconds(5));
+        completed.Outgoing.OfType<OutgoingInlineKeyboard>().Should().ContainSingle();
+    }
+
+    [Fact]
+    public void DeleteMoreCallbackHandler_execute_goal_empty_sends_delete_empty_reply()
+    {
+        var shardProbe = CreateTestProbe();
+        Akka.Hosting.ActorRegistry.For(Sys).Register<UserShardMarker>(shardProbe.Ref);
+
+        var reader = new FakeDeleteListReader();
+        var ctx = MakeCallbackCtx(CallbackPayload.Encode("delm", Guid.Empty, "g:0"));
+
+        new DeleteMoreCallbackHandler(reader).Execute(ctx);
+
+        var envelope = shardProbe.ExpectMsg<ShardEnvelope>(TimeSpan.FromSeconds(3));
+        envelope.Message.Should().BeOfType<GetUserGoals>();
+        shardProbe.Reply(new UserGoalsList([]));
+
+        var completed = ExpectMsg<TelegramCommandCompleted>(TimeSpan.FromSeconds(5));
+        completed.Outgoing.OfType<OutgoingTelegramReply>()
+            .Should().ContainSingle(r => r.Text == TelegramReplies.DeleteEmpty("goal"));
+    }
+
     // ── DeleteConfirmCallbackHandler.Execute ─────────────────────────────────
 
     [Fact]
@@ -362,6 +402,44 @@ public sealed class DeleteHandlerTests : TestKit
 
         var expenseId = Guid.NewGuid();
         var ctx = MakeCallbackCtx(CallbackPayload.Encode("delc", expenseId, "ey"));
+
+        new DeleteConfirmCallbackHandler().Execute(ctx);
+
+        shardProbe.ExpectMsg<ShardEnvelope>(TimeSpan.FromSeconds(3));
+        shardProbe.Reply(new DeletedSuccessfully());
+
+        var completed = ExpectMsg<TelegramCommandCompleted>(TimeSpan.FromSeconds(5));
+        completed.Outgoing.OfType<OutgoingTelegramReply>()
+            .Should().ContainSingle(r => r.Text == TelegramReplies.DeleteDone());
+    }
+
+    [Fact]
+    public void DeleteConfirmCallbackHandler_income_sends_command_and_replies_done()
+    {
+        var shardProbe = CreateTestProbe();
+        Akka.Hosting.ActorRegistry.For(Sys).Register<UserShardMarker>(shardProbe.Ref);
+
+        var incomeId = Guid.NewGuid();
+        var ctx = MakeCallbackCtx(CallbackPayload.Encode("delc", incomeId, "iy"));
+
+        new DeleteConfirmCallbackHandler().Execute(ctx);
+
+        shardProbe.ExpectMsg<ShardEnvelope>(TimeSpan.FromSeconds(3));
+        shardProbe.Reply(new DeletedSuccessfully());
+
+        var completed = ExpectMsg<TelegramCommandCompleted>(TimeSpan.FromSeconds(5));
+        completed.Outgoing.OfType<OutgoingTelegramReply>()
+            .Should().ContainSingle(r => r.Text == TelegramReplies.DeleteDone());
+    }
+
+    [Fact]
+    public void DeleteConfirmCallbackHandler_goal_sends_command_and_replies_done()
+    {
+        var shardProbe = CreateTestProbe();
+        Akka.Hosting.ActorRegistry.For(Sys).Register<UserShardMarker>(shardProbe.Ref);
+
+        var goalId = Guid.NewGuid();
+        var ctx = MakeCallbackCtx(CallbackPayload.Encode("delc", goalId, "gy"));
 
         new DeleteConfirmCallbackHandler().Execute(ctx);
 
