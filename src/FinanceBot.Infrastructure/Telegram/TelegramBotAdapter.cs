@@ -112,6 +112,38 @@ public sealed class TelegramBotAdapter : ITelegramBot
             cancellationToken: ct);
     }
 
+    public async Task<TelegramFileDownload> DownloadFileAsync(string fileId, CancellationToken ct)
+    {
+        if (_client is null)
+        {
+            _log.LogInformation("[stub] Download file {FileId}", fileId);
+            return new TelegramFileDownload([], "application/octet-stream");
+        }
+
+        var file = await _client.GetFile(fileId, cancellationToken: ct);
+        using var ms = new MemoryStream();
+        if (file.FilePath is { Length: > 0 } path)
+        {
+            await _client.DownloadFile(path, ms, cancellationToken: ct);
+        }
+        return new TelegramFileDownload(ms.ToArray(), MediaTypeFromPath(file.FilePath));
+    }
+
+    private static string MediaTypeFromPath(string? path)
+    {
+        var ext = Path.GetExtension(path ?? string.Empty).ToLowerInvariant();
+        return ext switch
+        {
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".png" => "image/png",
+            ".webp" => "image/webp",
+            ".gif" => "image/gif",
+            ".pdf" => "application/pdf",
+            ".csv" => "text/csv",
+            _ => "application/octet-stream"
+        };
+    }
+
     public async Task AnswerCallbackAsync(string callbackQueryId, string? text, CancellationToken ct)
     {
         if (_client is null)
@@ -165,16 +197,18 @@ public sealed class TelegramBotAdapter : ITelegramBot
 
         var convertedUpdates = new List<IncomingTelegramUpdate>(updates.Length);
         var convertedCallbacks = new List<IncomingCallbackQuery>(updates.Length);
+        var convertedFiles = new List<IncomingTelegramFile>(updates.Length);
         long nextOffset = offset;
 
         foreach (var update in updates)
         {
             nextOffset = Math.Max(nextOffset, update.Id + 1);
-            var (converted, callback) = TelegramUpdateConverter.TryConvert(update);
+            var (converted, callback, file) = TelegramUpdateConverter.TryConvert(update);
             if (converted is not null) convertedUpdates.Add(converted);
             if (callback is not null) convertedCallbacks.Add(callback);
+            if (file is not null) convertedFiles.Add(file);
         }
 
-        return new TelegramPollResult(convertedUpdates, convertedCallbacks, nextOffset);
+        return new TelegramPollResult(convertedUpdates, convertedCallbacks, nextOffset) { Files = convertedFiles };
     }
 }

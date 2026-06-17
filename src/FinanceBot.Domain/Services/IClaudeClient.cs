@@ -10,7 +10,14 @@ public sealed record ClaudeRequest(
     string SystemPrompt,
     string UserPrompt,
     int MaxTokens,
-    Guid CorrelationId);
+    Guid CorrelationId)
+{
+    /// <summary>Опциональное изображение для vision-запросов (скриншот выписки). Null = текстовый запрос.</summary>
+    public ClaudeImage? Image { get; init; }
+}
+
+/// <summary>Изображение для vision-запроса Claude: base64-данные + media type (image/jpeg, image/png, …).</summary>
+public sealed record ClaudeImage(string MediaType, string Base64Data);
 
 /// <summary>
 /// Ответ Claude (или информация о провале).

@@ -46,6 +46,10 @@ public sealed class TelegramPollingHostedService(
                 {
                     gateway.Tell(callback);
                 }
+                foreach (var file in result.Files)
+                {
+                    gateway.Tell(file);
+                }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

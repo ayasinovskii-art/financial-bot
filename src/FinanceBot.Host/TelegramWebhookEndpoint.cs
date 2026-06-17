@@ -46,9 +46,10 @@ public static class TelegramWebhookEndpoint
             return Results.BadRequest();
         }
 
-        var (msg, callback) = TelegramUpdateConverter.TryConvert(update);
+        var (msg, callback, file) = TelegramUpdateConverter.TryConvert(update);
         if (msg is not null) gateway.Tell(msg);
         if (callback is not null) gateway.Tell(callback);
+        if (file is not null) gateway.Tell(file);
         return Results.Ok();
     }
 }

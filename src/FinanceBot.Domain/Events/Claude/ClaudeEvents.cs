@@ -5,6 +5,7 @@ public enum ClaudeUseCase
 {
     Categorization = 1,
     Advice = 2,
+    StatementExtraction = 3,
     Other = 99
 }
 

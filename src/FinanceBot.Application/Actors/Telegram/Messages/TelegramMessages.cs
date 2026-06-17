@@ -59,3 +59,26 @@ public sealed record IncomingCallbackQuery(
 {
     public Guid CorrelationId { get; init; } = Guid.NewGuid();
 }
+
+/// <summary>Тип входящего файла.</summary>
+public enum FileKind { Photo = 1, Document = 2 }
+
+/// <summary>
+/// Входящее сообщение с файлом (фото/документ) — кандидат на импорт выписки.
+/// Несёт только FileId; байты скачиваются лениво через <c>ITelegramBot.DownloadFileAsync</c>.
+/// </summary>
+public sealed record IncomingTelegramFile(
+    long UpdateId,
+    long ChatId,
+    long TelegramId,
+    string? Username,
+    string? FirstName,
+    string? LastName,
+    string FileId,
+    FileKind Kind,
+    string? MimeType,
+    string? Caption,
+    DateTimeOffset SentAt)
+{
+    public Guid CorrelationId { get; init; } = Guid.NewGuid();
+}

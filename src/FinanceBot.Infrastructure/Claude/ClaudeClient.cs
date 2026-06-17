@@ -124,6 +124,14 @@ public sealed class ClaudeClient : IClaudeClient
 
     private HttpRequestMessage BuildHttpRequest(ClaudeRequest request)
     {
+        object userContent = request.Image is { } image
+            ? new object[]
+            {
+                new { type = "image", source = new { type = "base64", media_type = image.MediaType, data = image.Base64Data } },
+                new { type = "text", text = request.UserPrompt }
+            }
+            : request.UserPrompt;
+
         var payload = new
         {
             model = _options.Model,
@@ -131,7 +139,7 @@ public sealed class ClaudeClient : IClaudeClient
             system = request.SystemPrompt,
             messages = new[]
             {
-                new { role = "user", content = request.UserPrompt }
+                new { role = "user", content = userContent }
             }
         };
         var json = JsonSerializer.Serialize(payload);
