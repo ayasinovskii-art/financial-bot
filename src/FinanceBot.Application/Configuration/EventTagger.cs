@@ -4,11 +4,11 @@ using FinanceBot.Domain.Events.Advisor;
 using FinanceBot.Domain.Events.Budget;
 using FinanceBot.Domain.Events.Categorization;
 using FinanceBot.Domain.Events.Expense;
+using FinanceBot.Domain.Events.Goal;
 using FinanceBot.Domain.Events.Income;
+using FinanceBot.Domain.Events.Notifications;
 using FinanceBot.Domain.Events.Reports;
 using FinanceBot.Domain.Events.User;
-using FinanceBot.Domain.Events.Goal;
-using FinanceBot.Domain.Events.Notifications;
 using FinanceBot.Domain.Events.Whitelist;
 
 namespace FinanceBot.Application.Configuration;
@@ -42,6 +42,7 @@ public sealed class EventTagger : IWriteEventAdapter
                 break;
             case IncomeReported:
             case IncomeReportRequested:
+            case IncomeDeleted:
                 tags.Add(PersistenceTags.Income);
                 break;
             case BudgetPeriodStarted:
@@ -80,6 +81,7 @@ public sealed class EventTagger : IWriteEventAdapter
                 break;
             case GoalAdded:
             case GoalCompleted:
+            case GoalRemoved:
                 tags.Add(PersistenceTags.Goal);
                 break;
             case ProactiveNotificationSent:

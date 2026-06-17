@@ -1,4 +1,5 @@
 using FinanceBot.Application.Actors.Claude;
+using FinanceBot.Application.Actors.Telegram;
 using FinanceBot.Application.Csv;
 using FinanceBot.Application.Projections;
 using FinanceBot.Application.Scheduling;
@@ -109,6 +110,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<IUserScheduleResolver, UserScheduleResolver>();
 
         services.AddSingleton<IProjectionOffsetStore, ProjectionOffsetStore>();
+        services.AddSingleton<IDeleteListReader, DeleteListReader>();
         services.AddSingleton<IUsersReadModelWriter, UsersReadModelWriter>();
         services.AddSingleton<IWhitelistReadModelWriter, WhitelistReadModelWriter>();
         services.AddSingleton<IIncomeReadModelWriter, IncomeReadModelWriter>();

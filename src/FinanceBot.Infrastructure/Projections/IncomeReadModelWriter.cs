@@ -30,4 +30,12 @@ public sealed class IncomeReadModelWriter(IDbContextFactory<AppDbContext> dbFact
         });
         await db.SaveChangesAsync(ct);
     }
+
+    public async Task DeleteAsync(Guid incomeId, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        await db.Incomes
+            .Where(i => i.IncomeId == incomeId)
+            .ExecuteDeleteAsync(ct);
+    }
 }

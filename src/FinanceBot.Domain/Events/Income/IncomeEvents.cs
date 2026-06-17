@@ -15,3 +15,10 @@ public sealed record IncomeReportRequested(
     Guid UserId,
     DateTimeOffset OccurredAt,
     int EventVersion = 1) : IUserScopedEvent;
+
+/// <summary>Удаление дохода (компенсирующее событие).</summary>
+public sealed record IncomeDeleted(
+    Guid UserId,
+    Guid IncomeId,
+    DateTimeOffset OccurredAt,
+    int EventVersion = 1) : IUserScopedEvent;

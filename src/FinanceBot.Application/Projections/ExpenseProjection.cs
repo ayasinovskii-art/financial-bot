@@ -24,6 +24,7 @@ public sealed class ExpenseProjection(
             c.ExpenseId, c.Category, bucketMap.Map(c.Category), c.Source, c.NeedsReview, ct),
         ExpenseCategoryCorrected cc => writer.UpdateCategoryAsync(
             cc.ExpenseId, cc.NewCategory, bucketMap.Map(cc.NewCategory), ExpenseSource.Manual, false, ct),
+        ExpenseDeleted d => writer.DeleteAsync(d.ExpenseId, ct),
         _ => Task.CompletedTask
     };
 }

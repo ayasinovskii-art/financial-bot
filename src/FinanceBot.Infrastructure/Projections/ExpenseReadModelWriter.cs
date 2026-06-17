@@ -54,4 +54,12 @@ public sealed class ExpenseReadModelWriter(IDbContextFactory<AppDbContext> dbFac
                 .SetProperty(e => e.Source, sourceStr)
                 .SetProperty(e => e.NeedsReview, needsReview), ct);
     }
+
+    public async Task DeleteAsync(Guid expenseId, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        await db.Expenses
+            .Where(e => e.ExpenseId == expenseId)
+            .ExecuteDeleteAsync(ct);
+    }
 }

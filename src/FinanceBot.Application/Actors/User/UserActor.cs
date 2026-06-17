@@ -73,6 +73,9 @@ public sealed class UserActor : ReceivePersistentActor, IWithTimers
         Recover<BudgetPeriodClosed>(ApplyEvent);
         Recover<GoalAdded>(ApplyEvent);
         Recover<GoalCompleted>(ApplyEvent);
+        Recover<GoalRemoved>(ApplyEvent);
+        Recover<ExpenseDeleted>(ApplyEvent);
+        Recover<IncomeDeleted>(ApplyEvent);
         Recover<SnapshotOffer>(offer =>
         {
             if (offer.Snapshot is UserState snap)
@@ -97,6 +100,9 @@ public sealed class UserActor : ReceivePersistentActor, IWithTimers
         Command<CompleteGoal>(HandleCompleteGoal);
         Command<GetUserGoals>(HandleGetUserGoals);
         Command<BulkAddExpenses>(HandleBulkAddExpenses);
+        Command<DeleteExpense>(HandleDeleteExpense);
+        Command<DeleteIncome>(HandleDeleteIncome);
+        Command<RemoveGoal>(HandleRemoveGoal);
 
         Command<LinkUserChat>(HandleLinkUserChat);
         Command<Cancel>(_ => Sender.Tell(new CancelAcknowledged(_userId)));
@@ -641,6 +647,7 @@ public sealed class UserActor : ReceivePersistentActor, IWithTimers
             BudgetPeriodClosed _ => _state with { ActivePeriod = null, PeriodClosable = false },
             GoalAdded ga => _state.WithGoalAdded(ga),
             GoalCompleted gc => _state.WithGoalCompleted(gc),
+            GoalRemoved gr => _state with { Goals = _state.Goals.Where(g => g.GoalId != gr.GoalId).ToArray() },
             _ => _state
         };
     }
@@ -758,6 +765,61 @@ public sealed class UserActor : ReceivePersistentActor, IWithTimers
 
     private void HandleGetUserGoals(GetUserGoals _)
         => Sender.Tell(new UserGoalsList(_state.Goals));
+
+    private void HandleDeleteExpense(DeleteExpense cmd)
+    {
+        if (cmd.ExpenseId == Guid.Empty)
+        {
+            Sender.Tell(new DeleteRejected("ID траты не может быть пустым."));
+            return;
+        }
+
+        var evt = new ExpenseDeleted(_userId, cmd.ExpenseId, cmd.Reason, DateTimeOffset.UtcNow);
+        var sender = Sender;
+        Persist(evt, persisted =>
+        {
+            ApplyEvent(persisted);
+            MaybeSnapshot();
+            sender.Tell(new DeletedSuccessfully());
+        });
+    }
+
+    private void HandleDeleteIncome(DeleteIncome cmd)
+    {
+        if (cmd.IncomeId == Guid.Empty)
+        {
+            Sender.Tell(new DeleteRejected("ID дохода не может быть пустым."));
+            return;
+        }
+
+        var evt = new IncomeDeleted(_userId, cmd.IncomeId, DateTimeOffset.UtcNow);
+        var sender = Sender;
+        Persist(evt, persisted =>
+        {
+            ApplyEvent(persisted);
+            MaybeSnapshot();
+            sender.Tell(new DeletedSuccessfully());
+        });
+    }
+
+    private void HandleRemoveGoal(RemoveGoal cmd)
+    {
+        var goal = _state.Goals.FirstOrDefault(g => g.GoalId == cmd.GoalId);
+        if (goal is null)
+        {
+            Sender.Tell(new GoalRejected("Цель не найдена."));
+            return;
+        }
+
+        var evt = new GoalRemoved(_userId, cmd.GoalId, DateTimeOffset.UtcNow);
+        var sender = Sender;
+        Persist(evt, persisted =>
+        {
+            ApplyEvent(persisted);
+            MaybeSnapshot();
+            sender.Tell(new DeletedSuccessfully());
+        });
+    }
 
     private void HandleBulkAddExpenses(BulkAddExpenses cmd)
     {

@@ -22,4 +22,6 @@ public interface IExpenseReadModelWriter
         ExpenseSource source,
         bool needsReview,
         CancellationToken ct);
+
+    Task DeleteAsync(Guid expenseId, CancellationToken ct);
 }
