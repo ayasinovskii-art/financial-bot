@@ -1,10 +1,12 @@
 using FinanceBot.Application.Actors.Claude;
+using FinanceBot.Application.Csv;
 using FinanceBot.Application.Projections;
 using FinanceBot.Application.Scheduling;
 using FinanceBot.Application.Telegram;
 using FinanceBot.Domain.Services;
 using FinanceBot.Infrastructure.CategoryRules;
 using FinanceBot.Infrastructure.Claude;
+using FinanceBot.Infrastructure.Csv;
 using FinanceBot.Infrastructure.Persistence;
 using FinanceBot.Infrastructure.Projections;
 using FinanceBot.Infrastructure.Scheduling;
@@ -115,6 +117,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<ICategoryBucketMap, DefaultCategoryBucketMap>();
         services.AddSingleton<ICategoryRules, JsonCategoryRules>();
         services.AddSingleton<ITelegramBot, TelegramBotAdapter>();
+        services.AddSingleton<ICsvImportParser, TinkoffCsvParser>();
         services.AddSingleton<FinanceBot.Application.Actors.Advisor.IAdvisorSnapshotReader,
             FinanceBot.Infrastructure.Advisor.AdvisorSnapshotReader>();
         services.AddSingleton<FinanceBot.Application.Actors.Charts.IChartDataReader,

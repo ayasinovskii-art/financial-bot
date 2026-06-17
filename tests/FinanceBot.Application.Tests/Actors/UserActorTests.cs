@@ -159,4 +159,78 @@ public sealed class UserActorTests : AkkaPersistenceTestBase
         actor.Tell(new Cancel(userId));
         ExpectMsg<CancelAcknowledged>();
     }
+
+    [Fact]
+    public void BulkAddExpenses_unregistered_replies_rejected()
+    {
+        var userId = Guid.NewGuid();
+        var actor = Sys.ActorOf(UserActor.CreateProps(userId));
+
+        var rows = new List<BulkExpenseRow> { new(100m, new DateOnly(2026, 1, 1), "Кофе") };
+        actor.Tell(new BulkAddExpenses(userId, Guid.Empty, rows));
+
+        var rejected = ExpectMsg<BulkExpensesRejected>(TimeSpan.FromSeconds(3));
+        rejected.UserId.Should().Be(userId);
+        rejected.Reason.Should().Contain("зарегистрир");
+    }
+
+    [Fact]
+    public void BulkAddExpenses_no_active_period_replies_rejected()
+    {
+        var userId = Guid.NewGuid();
+        var actor = Sys.ActorOf(UserActor.CreateProps(userId));
+
+        actor.Tell(new RegisterUser(userId, 1, "UTC"));
+        ExpectMsg<UserRegistrationCompleted>();
+
+        var rows = new List<BulkExpenseRow> { new(100m, new DateOnly(2026, 1, 1), "Кофе") };
+        actor.Tell(new BulkAddExpenses(userId, Guid.Empty, rows));
+
+        var rejected = ExpectMsg<BulkExpensesRejected>(TimeSpan.FromSeconds(3));
+        rejected.UserId.Should().Be(userId);
+        rejected.Reason.Should().Contain("период");
+    }
+
+    [Fact]
+    public void BulkAddExpenses_ten_rows_two_state_dups_adds_eight()
+    {
+        var userId = Guid.NewGuid();
+        var actor = Sys.ActorOf(UserActor.CreateProps(userId));
+
+        actor.Tell(new RegisterUser(userId, 1, "UTC"));
+        ExpectMsg<UserRegistrationCompleted>();
+        actor.Tell(new ReportIncome(userId, 100_000m, DateTimeOffset.UtcNow, "salary"));
+        ExpectMsg<IncomeAccepted>(TimeSpan.FromSeconds(3));
+
+        // Seed 2 expenses into actor state (these become the state-level duplicates).
+        var dupDate = new DateOnly(2026, 1, 10);
+        var firstBatch = new List<BulkExpenseRow>
+        {
+            new(500m, dupDate, "Супермаркет"),
+            new(300m, dupDate, "Кофе"),
+        };
+        actor.Tell(new BulkAddExpenses(userId, Guid.Empty, firstBatch));
+        var first = ExpectMsg<BulkExpensesResult>(TimeSpan.FromSeconds(5));
+        first.Added.Should().Be(2);
+        first.Skipped.Should().Be(0);
+
+        // 10 rows: 2 duplicate existing + 8 new.
+        var tenRows = new List<BulkExpenseRow>
+        {
+            new(500m, dupDate, "Супермаркет"),   // dup
+            new(300m, dupDate, "Кофе"),           // dup
+            new(100m, new DateOnly(2026, 1, 11), "Аптека"),
+            new(200m, new DateOnly(2026, 1, 11), "Транспорт"),
+            new(150m, new DateOnly(2026, 1, 12), "Кино"),
+            new(400m, new DateOnly(2026, 1, 12), "Ресторан"),
+            new(250m, new DateOnly(2026, 1, 13), "Одежда"),
+            new(350m, new DateOnly(2026, 1, 13), "Техника"),
+            new(80m,  new DateOnly(2026, 1, 14), "Книги"),
+            new(120m, new DateOnly(2026, 1, 14), "Подписки"),
+        };
+        actor.Tell(new BulkAddExpenses(userId, Guid.Empty, tenRows));
+        var second = ExpectMsg<BulkExpensesResult>(TimeSpan.FromSeconds(5));
+        second.Added.Should().Be(8);
+        second.Skipped.Should().Be(2);
+    }
 }

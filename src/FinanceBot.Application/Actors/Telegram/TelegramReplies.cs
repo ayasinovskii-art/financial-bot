@@ -207,6 +207,38 @@ public static class TelegramReplies
     public static string NlpRecordedByAI(string category)
         => $"Записал. Определил категорию: {category}.";
 
+    public static string CsvImportUnknownCallback() => "Не понял callback.";
+    public static string CsvImportUnknownAnswer() => "Не понял ответ.";
+    public static string CsvImportInternalError() => "Внутренняя ошибка.";
+    public static string CsvImportRejected(string reason) => $"Не удалось импортировать: {reason}";
+    public static string CsvImportUnexpectedResponse() => "Не понял ответа от UserActor.";
+
+    public static string CsvImportInstruction()
+        => "Отправь CSV-файл выписки Тинькофф (файл с расширением .csv), и я распознаю траты.";
+
+    public static string CsvImportParseSummary(int rows, int skipped)
+        => $"Распознал {rows} трат(ы)." +
+           (skipped > 0 ? $" Пропущено: {skipped} (не-RUB, отклонённые, дубли внутри файла)." : string.Empty) +
+           "\nИмпортировать?";
+
+    public const string CsvImportConfirmButton = "✅ Подтвердить";
+    public const string CsvImportCancelButton = "❌ Отменить";
+
+    public static string CsvImportSuccess(int added, int skipped)
+        => $"Импорт завершён. Добавлено: {added}, пропущено (дубли): {skipped}.";
+
+    public static string CsvImportCancelled()
+        => "Импорт отменён. Ничего не добавлено.";
+
+    public static string CsvImportSessionExpired()
+        => "Сессия импорта устарела. Отправь файл заново.";
+
+    public static string CsvImportDownloadFailed()
+        => "Не удалось скачать файл. Попробуй отправить его ещё раз.";
+
+    public static string CsvImportEmptyFile()
+        => "Файл не содержит распознанных трат (нет строк со статусом ОК, валютой RUB и отрицательной суммой).";
+
     private static string Format(decimal value) => value.ToString("0.00", CultureInfo.InvariantCulture);
 
     public static string WhitelistList(WhitelistEntry[] entries, long[] admins)

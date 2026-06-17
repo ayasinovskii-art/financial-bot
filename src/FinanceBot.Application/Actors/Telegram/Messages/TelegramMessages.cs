@@ -12,7 +12,10 @@ public sealed record IncomingTelegramUpdate(
     string? FirstName,
     string? LastName,
     string? Text,
-    DateTimeOffset SentAt)
+    DateTimeOffset SentAt,
+    string? DocumentFileId = null,
+    string? DocumentFileName = null,
+    string? DocumentMimeType = null)
 {
     public Guid CorrelationId { get; init; } = Guid.NewGuid();
 }

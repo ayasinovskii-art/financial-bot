@@ -8,6 +8,8 @@ using FinanceBot.Application.Actors.Telegram.Messages;
 using FinanceBot.Application.Actors.User;
 using FinanceBot.Application.Actors.User.Messages;
 using FinanceBot.Application.Configuration;
+using FinanceBot.Application.Csv;
+using FinanceBot.Application.Telegram;
 using FinanceBot.Domain.Commands.AccessControl;
 using FinanceBot.Domain.Commands.User;
 using FinanceBot.Domain.Events.Claude;
@@ -42,7 +44,10 @@ public sealed class TelegramGatewayActorStage6Tests : TestKit
             Options.Create(new UserDefaultsOptions()),
             [],
             [],
-            new NlpPendingCache()));
+            new NlpPendingCache(),
+            new ImportPendingCache(),
+            new StubTelegramBot(),
+            new StubCsvImportParser()));
 
         return (gateway, accessProbe, consultantProbe, shardProbe);
     }
@@ -177,5 +182,23 @@ public sealed class TelegramGatewayActorStage6Tests : TestKit
             Category.DiningOut, Bucket.Fun, 0m, 0m, 0m, 25000m, 12500m, 12500m));
 
         replyProbe.ExpectMsg<OutgoingTelegramReply>(TimeSpan.FromSeconds(5));
+    }
+
+    private sealed class StubTelegramBot : ITelegramBot
+    {
+        public Task SendTextAsync(long chatId, string text, CancellationToken ct) => Task.CompletedTask;
+        public Task SendInlineKeyboardAsync(long chatId, string text, IReadOnlyList<IReadOnlyList<InlineButton>> rows, CancellationToken ct) => Task.CompletedTask;
+        public Task AnswerCallbackAsync(string callbackQueryId, string? text, CancellationToken ct) => Task.CompletedTask;
+        public Task SendPhotoAsync(long chatId, byte[] photo, string fileName, string? caption, CancellationToken ct) => Task.CompletedTask;
+        public Task SendDocumentAsync(long chatId, byte[] document, string fileName, string? caption, CancellationToken ct) => Task.CompletedTask;
+        public Task<byte[]> DownloadFileAsync(string fileId, CancellationToken ct) => Task.FromResult(Array.Empty<byte>());
+        public Task<TelegramPollResult> PollAsync(long offset, TimeSpan timeout, CancellationToken ct) => Task.FromResult(new TelegramPollResult([], [], offset));
+        public Task<bool> SetWebhookAsync(string url, CancellationToken ct) => Task.FromResult(true);
+        public Task DeleteWebhookAsync(CancellationToken ct) => Task.CompletedTask;
+    }
+
+    private sealed class StubCsvImportParser : ICsvImportParser
+    {
+        public CsvParseResult Parse(string csvText) => new([], 0);
     }
 }

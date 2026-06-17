@@ -16,8 +16,10 @@ using FinanceBot.Application.Actors.User;
 using FinanceBot.Application.Actors.UserPlannedExpenses;
 using FinanceBot.Application.Actors.UserTemplates;
 using FinanceBot.Application.Configuration;
+using FinanceBot.Application.Csv;
 using FinanceBot.Application.Projections;
 using FinanceBot.Application.Scheduling;
+using FinanceBot.Application.Telegram;
 using FinanceBot.Domain.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -214,6 +216,10 @@ public static class ApplicationServiceCollectionExtensions
         services.AddSingleton<ITelegramCallbackHandler, CorrectionCallbackHandler>();
         services.AddSingleton<NlpPendingCache>();
         services.AddSingleton<ITelegramCallbackHandler, NlpClarifyCallbackHandler>();
+
+        services.AddSingleton<ImportPendingCache>();
+        services.AddSingleton<ITelegramCallbackHandler, ImportConfirmCallbackHandler>();
+        services.AddSingleton<ITelegramCommandHandler, ImportCommandHandler>();
     }
 
     private static void ConfigurePerNodeServices(AkkaConfigurationBuilder builder)
@@ -225,7 +231,10 @@ public static class ApplicationServiceCollectionExtensions
                     resolver.GetService<IOptions<UserDefaultsOptions>>(),
                     resolver.GetService<IEnumerable<ITelegramCommandHandler>>(),
                     resolver.GetService<IEnumerable<ITelegramCallbackHandler>>(),
-                    resolver.GetService<NlpPendingCache>()),
+                    resolver.GetService<NlpPendingCache>(),
+                    resolver.GetService<ImportPendingCache>(),
+                    resolver.GetService<ITelegramBot>(),
+                    resolver.GetService<ICsvImportParser>()),
                 "telegram-gateway");
             registry.Register<TelegramGatewayActor>(gateway);
 

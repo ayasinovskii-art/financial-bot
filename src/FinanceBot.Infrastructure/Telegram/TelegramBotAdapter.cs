@@ -112,6 +112,20 @@ public sealed class TelegramBotAdapter : ITelegramBot
             cancellationToken: ct);
     }
 
+    public async Task<byte[]> DownloadFileAsync(string fileId, CancellationToken ct)
+    {
+        if (_client is null)
+        {
+            _log.LogInformation("[stub] DownloadFile: {FileId}", fileId);
+            return Array.Empty<byte>();
+        }
+
+        var file = await _client.GetFile(fileId, ct);
+        using var ms = new MemoryStream();
+        await _client.DownloadFile(file.FilePath!, ms, ct);
+        return ms.ToArray();
+    }
+
     public async Task AnswerCallbackAsync(string callbackQueryId, string? text, CancellationToken ct)
     {
         if (_client is null)
